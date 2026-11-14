@@ -23,7 +23,7 @@ ML project: FastAPI service + sklearn pipeline, MongoDB storage.
 
 ## Logging
 - Always `from app.logging.logger import logger`. Never `print()`, never stdlib `logging.basicConfig`.
-- Importing the module creates a new file per run: `logs/<YYYY-MM-DD>/<HH-MM-SS>.log`.
+- Importing the module creates a new file per run: `logs/<YYYY-MM-DD>/<HH-MM-SS>.log`. Every log line includes entry script name as `[script]`.
 - Files older than 7 days auto-deleted on startup. `logs/` is gitignored.
 - Entry scripts must import the logger first so each run writes a log.
 - Use `logger.exception(...)` inside `except` blocks to keep traceback.

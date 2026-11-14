@@ -12,7 +12,7 @@ logger.info("Pipeline started")
 
 That is all. No setup call needed. Importing the module:
 
-1. Creates `logs/<YYYY-MM-DD>/<HH-MM-SS>.log` for this run.
+1. Creates `logs/<YYYY-MM-DD>/<HH-MM-SS>.log` for this run. Every line includes the entry script name, e.g. `[main]`.
 2. Deletes `.log` files older than 7 days (and empty date folders).
 3. Attaches two outputs: console (INFO+) and file (DEBUG+).
 
