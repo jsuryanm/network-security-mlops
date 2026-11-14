@@ -7,3 +7,8 @@ fastapi
 uvicorn[standard]
 pydantic
 pydantic-settings
+
+pymongo 
+certifi
+
+loguru
