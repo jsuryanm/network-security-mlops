@@ -1,6 +1,9 @@
 from pymongo import MongoClient
-uri = "mongodb+srv://jsmudev_db_user:<db_password>@cluster0.zmrpoo4.mongodb.net/"
-client = MongoClient(uri)
+from app.core.config import get_settings
+
+settings = get_settings()
+client = MongoClient(settings.mongodb_uri)
+
 try:
     client.admin.command("ping")
     print("Connected successfully")
