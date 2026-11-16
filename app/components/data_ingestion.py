@@ -116,6 +116,6 @@ class DataIngestion:
         except Exception as e:
             raise NetworkSecurityException(e, sys)
 
-if __name__ == "__main__":
-    data_ingestion_artifact = DataIngestion(DataIngestionConfig()).initiate_data_ingestion()
-    print(data_ingestion_artifact)
+# if __name__ == "__main__":
+#     data_ingestion_artifact = DataIngestion(DataIngestionConfig()).initiate_data_ingestion()
+#     print(data_ingestion_artifact)

@@ -221,3 +221,6 @@ __marimo__/
 
 # Runtime logs
 logs/
+
+# Artifacts
+Artifacts
