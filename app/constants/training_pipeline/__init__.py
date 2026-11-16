@@ -32,3 +32,10 @@ DATA_VALIDATION_VALID_DIR: str = "validated"
 DATA_VALIDATION_INVALID_DIR: str = "invalid"
 DATA_VALIDATION_DRIFT_REPORT_DIR: str = "drift_report"
 DATA_VALIDATION_DRIFT_REPORT_FILE_NAME: str = "report.yaml" 
+DATA_VALIDATION_DRIFT_HTML_FILE_NAME: str = "report.html"
+
+# Data drift (Evidently): compare train (reference) vs test (current)
+DATA_DRIFT_METHOD: str = "jensenshannon"   # distance test: drift when distance >= threshold
+DATA_DRIFT_THRESHOLD: float = 0.1          # per-column threshold
+DATA_DRIFT_SHARE: float = 0.3              # dataset drifts when >= 30% of columns drift
+DATA_DRIFT_CRITICAL_COLUMNS: list[str] = ["SSLfinal_State", "URL_of_Anchor"]  # model depends on these (notebook 05)

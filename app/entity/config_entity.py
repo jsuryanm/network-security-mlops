@@ -110,7 +110,7 @@ class DataValidationConfig(BaseModel):
     @property
     def valid_test_file_path(self) -> Path:
         return (
-            self.data_validation_dir / 
+            self.valid_data_dir / 
             training_pipeline.TEST_FILE_NAME
         )
 
@@ -122,7 +122,7 @@ class DataValidationConfig(BaseModel):
         )
 
     @property
-    def invalid_train_file_path(self) -> Path:
+    def invalid_test_file_path(self) -> Path:
         return (
             self.invalid_data_dir / 
             training_pipeline.TEST_FILE_NAME
@@ -136,4 +136,10 @@ class DataValidationConfig(BaseModel):
             training_pipeline.DATA_VALIDATION_DRIFT_REPORT_FILE_NAME
         )
 
-    
+    @property
+    def drift_html_report_file_path(self) -> Path:
+        return (
+            self.data_validation_dir / 
+            training_pipeline.DATA_VALIDATION_DRIFT_REPORT_DIR / 
+            training_pipeline.DATA_VALIDATION_DRIFT_HTML_FILE_NAME
+        )

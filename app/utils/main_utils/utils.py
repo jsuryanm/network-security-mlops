@@ -19,16 +19,16 @@ def read_yaml_file(file_path: Path) -> dict:
 def write_yaml_file(
     file_path: Path,
     content: object,
-    replace: bool = False,
+    replace: bool = True,
 ) -> None:
+    """Write `content` as YAML. Creates parent dirs; overwrites when replace=True."""
     try:
-        if replace:
-            if Path(file_path).exists():
-                Path(file_path).unlink()
-            
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            with open(file_path, 'w') as file:
-                yaml.dump(content, file)
-                
+        file_path = Path(file_path)
+        if file_path.exists() and not replace:
+            return
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, 'w') as file:
+            yaml.dump(content, file)
+
     except Exception as e:
-        raise NetworkSecurityException(e, sys)
+        raise NetworkSecurityException(e, sys) from e
