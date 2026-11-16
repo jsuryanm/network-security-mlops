@@ -37,6 +37,9 @@ class DataIngestionConfig(BaseModel):
         le=1
     )
 
+    collection_name: str = training_pipeline.DATA_INGESTION_COLLECTION_NAME
+    database_name: str = training_pipeline.DATA_INGESTION_DATABASE_NAME
+
     @property
     def data_ingestion_dir(self) -> Path:
         return (
@@ -67,3 +70,5 @@ class DataIngestionConfig(BaseModel):
             training_pipeline.DATA_INGESTION_INGESTED_DIR / 
             training_pipeline.TEST_FILE_NAME
         )
+
+    
