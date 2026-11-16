@@ -60,7 +60,7 @@ class DataIngestionConfig(BaseModel):
         return (
             self.data_ingestion_dir / 
             training_pipeline.DATA_INGESTION_INGESTED_DIR / 
-            training_pipeline.TEST_FILE_NAME
+            training_pipeline.TRAIN_FILE_NAME
         )
 
     @property
