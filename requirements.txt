@@ -12,3 +12,6 @@ pymongo
 certifi
 
 loguru
+
+# mlops 
+evidently

@@ -71,4 +71,69 @@ class DataIngestionConfig(BaseModel):
             training_pipeline.TEST_FILE_NAME
         )
 
+class DataValidationConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    training_pipeline_config: TrainingPipelineConfig = Field(
+        default_factory=TrainingPipelineConfig,
+        exclude=True # leaves out field when converting model to JSON
+    )
+
+    @property
+    def data_validation_dir(self) -> Path:
+        return (
+            self.training_pipeline_config.artifact_dir /
+            training_pipeline.DATA_VALIDATION_DIR_NAME
+        )
+
+    @property
+    def valid_data_dir(self) -> Path:
+        return (
+            self.data_validation_dir / 
+            training_pipeline.DATA_VALIDATION_VALID_DIR
+        )
+
+    @property 
+    def invalid_data_dir(self) -> Path:
+        return (
+            self.data_validation_dir / 
+            training_pipeline.DATA_VALIDATION_INVALID_DIR
+        )
+
+    @property
+    def valid_train_file_path(self) -> Path:
+        return (
+            self.valid_data_dir / 
+            training_pipeline.TRAIN_FILE_NAME
+        )
+
+    @property
+    def valid_test_file_path(self) -> Path:
+        return (
+            self.data_validation_dir / 
+            training_pipeline.TEST_FILE_NAME
+        )
+
+    @property
+    def invalid_train_file_path(self) -> Path:
+        return (
+            self.invalid_data_dir / 
+            training_pipeline.TRAIN_FILE_NAME
+        )
+
+    @property
+    def invalid_train_file_path(self) -> Path:
+        return (
+            self.invalid_data_dir / 
+            training_pipeline.TEST_FILE_NAME
+        )
+
+    @property
+    def drift_report_file_path(self) -> Path:
+        return (
+            self.data_validation_dir / 
+            training_pipeline.DATA_VALIDATION_DRIFT_REPORT_DIR / 
+            training_pipeline.DATA_VALIDATION_DRIFT_REPORT_FILE_NAME
+        )
+
     
