@@ -70,7 +70,9 @@ class DataValidation:
         """
         try:
             # Features are -1/0/1 codes (not magnitudes), so treat every column as categorical
-            definition = DataDefinition(categorical_columns=list(base_df.columns))
+            definition = DataDefinition(categorical_columns=list(base_df.columns)) 
+            # schema map that tells evidently what each col in dataset represents
+            
             reference = Dataset.from_pandas(base_df, data_definition=definition)
             current = Dataset.from_pandas(current_df, data_definition=definition)
 
