@@ -39,3 +39,5 @@ DATA_DRIFT_METHOD: str = "jensenshannon"   # distance test: drift when distance 
 DATA_DRIFT_THRESHOLD: float = 0.1          # per-column threshold
 DATA_DRIFT_SHARE: float = 0.3              # dataset drifts when >= 30% of columns drift
 DATA_DRIFT_CRITICAL_COLUMNS: list[str] = ["SSLfinal_State", "URL_of_Anchor"]  # model depends on these (notebook 05)
+
+# Data transformation constants

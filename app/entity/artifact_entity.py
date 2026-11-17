@@ -17,3 +17,4 @@ class DataValidationArtifact(BaseModel):
     drift_report_file_path: Path
     drift_html_report_file_path: Path
     drifted_columns: list[str] = []
+

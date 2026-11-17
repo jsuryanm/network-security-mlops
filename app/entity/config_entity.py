@@ -143,3 +143,20 @@ class DataValidationConfig(BaseModel):
             training_pipeline.DATA_VALIDATION_DRIFT_REPORT_DIR / 
             training_pipeline.DATA_VALIDATION_DRIFT_HTML_FILE_NAME
         )
+
+class DataTransformationConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    
+    training_pipeline_config: TrainingPipelineConfig = Field(
+        default_factory=TrainingPipelineConfig,
+        exclude=True # leaves out field when converting model to JSON
+    )
+    
+    @property
+    def data_transformation_dir(self) -> Path:
+        return (
+            self.training_pipeline_config.artifact_dir /
+            training_pipeline.DATA_TRA
+
+
+        )
