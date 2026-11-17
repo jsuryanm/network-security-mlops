@@ -224,3 +224,6 @@ logs/
 
 # Artifacts
 Artifacts
+
+# graphify-out
+graphify-out/*
