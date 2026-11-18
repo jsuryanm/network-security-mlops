@@ -227,3 +227,6 @@ Artifacts
 
 # graphify-out
 graphify-out/*
+
+# KNNImputer object 
+final_model/*
