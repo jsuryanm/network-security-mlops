@@ -84,12 +84,13 @@ class DataTransformation:
             
             save_object( self.data_transformation_config.transformed_object_file_path, preprocessor_obj)
             save_object( "final_model/preprocessor.pkl", preprocessor_obj)
-            
+
             logger.info("Saving the transformed training and test data and Imputer object.")
 
-            data_transformation_artifact =  DataTransformation(
-                data_validation_artifact=self.data_validation_artifact,
-                data_transformation_config=self.data_transformation_config
+            data_transformation_artifact =  DataTranformationArtifact(
+                transformed_object_file_path=self.data_transformation_config.transformed_object_file_path,
+                transformed_train_file_path=self.data_transformation_config.transformed_train_file_path,
+                transformed_test_file_path=self.data_transformation_config.transformed_test_file_path
             )
 
             return data_transformation_artifact
