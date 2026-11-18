@@ -156,7 +156,21 @@ class DataTransformationConfig(BaseModel):
     def data_transformation_dir(self) -> Path:
         return (
             self.training_pipeline_config.artifact_dir /
-            training_pipeline.DATA_TRA
+            training_pipeline.DATA_TRANSFORMATION_DIR_NAME
+        )
 
+    @property
+    def transformed_train_file_path(self) -> Path:
+        return (
+            self.data_transformation_dir /
+            training_pipeline.DATA_TRANSFORMATION_TRANSFORMED_DATA_DIR / 
+            training_pipeline.TEST_FILE_NAME.replace("csv","npy")
+        )
 
+    @property
+    def transformed_object_file_path(self) -> Path:
+        return (
+            self.data_transformation_dir / 
+            training_pipeline.DATA_TRANSFORMATION_TRANSFORMED_OBJECT_DIR /
+            training_pipeline.PREP
         )

@@ -1,7 +1,7 @@
 import os 
 import sys 
 
-import numpy
+import numpy as np 
 import pandas as pd 
 from pathlib import Path 
 # common constant variables for training pipeline 
@@ -41,3 +41,14 @@ DATA_DRIFT_SHARE: float = 0.3              # dataset drifts when >= 30% of colum
 DATA_DRIFT_CRITICAL_COLUMNS: list[str] = ["SSLfinal_State", "URL_of_Anchor"]  # model depends on these (notebook 05)
 
 # Data transformation constants
+DATA_TRANSFORMATION_DIR_NAME: str = "data_transformation"
+DATA_TRANSFORMATION_TRANSFORMED_DATA_DIR: str = "transformed"
+DATA_TRANSFORMATION_TRANSFORMED_OBJECT_DIR: str = "transformed_object"
+DATA_TRANSFORMATION_IMPUTE_PARAMS: dict = {
+    "missing_values": np.nan, # nan values will be imputed
+    "n_neighbors": 3,  # no of neighbor samples used for imputation
+    "weights": "uniform" # weights assigned to neighbors
+}  
+DATA_TRANSFORMATION_TRAIN_FILE_PATH: str = "train.npy"
+DATA_TRANSFORMATION_TEST_FILE_PATH: str = "test.npy"
+PREPROCESSING_OBJECT_FILE_NAME: str = "preprocessing.pkl"
