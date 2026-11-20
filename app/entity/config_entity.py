@@ -183,4 +183,39 @@ class DataTransformationConfig(BaseModel):
             training_pipeline.PREPROCESSING_OBJECT_FILE_NAME
         )
 
+
+class ModelTrainerConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
     
+    training_pipeline_config: TrainingPipelineConfig = Field(
+        default_factory=TrainingPipelineConfig,
+        exclude=True # leaves out field when converting model to JSON
+    )
+
+    @property
+    def model_trainer_dir(self) -> Path:
+        return (
+            self.model_trainer_dir /
+            training_pipeline.MODEL_TRAINER_DIR_NAME
+        )
+
+    @property
+    def trained_model_file_path(self) -> Path:
+        return (
+            self.model_trainer_dir / 
+            training_pipeline.MODEL_TRAINER_DIR_NAME /
+            training_pipeline.MODEL_TRAINER_TRAINED_MODEL_DIR /
+            training_pipeline.MODEL_TRAINER_TRAINED_MODEL_NAME
+        )
+
+    expected_accuracy: float = Field(
+        default=training_pipeline.MODEL_TRAINER_EXPECTED_SCORE,
+        le=1.0,
+        ge=0
+    )
+
+    overfitting_underfitting_threshold: float = Field(
+        default=training_pipeline.MODEL_TRAINER_OVER_FIITING_UNDER_FITTING_THRESHOLD,
+        le=1.0,
+        ge=0.0
+    )
