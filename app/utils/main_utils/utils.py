@@ -9,6 +9,9 @@ import joblib
 
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import RandomizedSearchCV
+from sklearn.metrics import precision_score
+from scipy.stats import randint, uniform, loguniform
+
 
 from app.exception.exceptions import NetworkSecurityException
 from app.logging.logger import logger 
@@ -64,7 +67,7 @@ def evaluate_models(
     X_test: np.ndarray,
     y_test: np.ndarray,
     models: dict,
-    param: dict
+    params: dict
 ) -> dict:
     """Performs hyperparameter tuning on various 
     models. The models are then trained and evaluated, we will 
@@ -73,4 +76,34 @@ def evaluate_models(
         report = dict()
 
         for key in models.keys():
-            
+            model = models[key]
+            param = params[key]
+
+            rnd_search = RandomizedSearchCV(
+                model,
+                param_distributions=param,
+                n_iter=10,          # random combos sampled per model
+                cv=3,
+                scoring="precision",
+                n_jobs=-1,
+                random_state=42,
+            )
+
+            rnd_search.fit(X_train, y_train)
+
+            best_params = rnd_search.best_params_
+            model.set_params(**best_params)
+            model.fit(X_train)
+
+            y_train_pred = model.predict(X_train)
+            y_test_pred = model.predict(X_test)
+
+            train_model_score = precision_score(y_train_pred, y_train)
+            test_model_score = precision_score(y_test_pred, y_test)
+
+            report[models.get(key)] = test_model_score
+
+        return report
+
+    except Exception as e:
+        raise NetworkSecurityException(e, sys)
