@@ -3,8 +3,12 @@ import joblib
 import os 
 import sys 
 from pathlib import Path 
+
 import numpy as np 
 import joblib
+
+from sklearn.base import BaseEstimator
+from sklearn.model_selection import RandomizedSearchCV
 
 from app.exception.exceptions import NetworkSecurityException
 from app.logging.logger import logger 
@@ -53,3 +57,20 @@ def save_object(file_path: Path, obj: object) -> None:
     
     except Exception as e:
         raise NetworkSecurityException(e, sys) from e 
+
+def evaluate_models(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_test: np.ndarray,
+    y_test: np.ndarray,
+    models: dict,
+    param: dict
+) -> dict:
+    """Performs hyperparameter tuning on various 
+    models. The models are then trained and evaluated, we will 
+    return dict containing the models performance"""
+    try:
+        report = dict()
+
+        for key in models.keys():
+            
