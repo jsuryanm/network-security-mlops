@@ -7,11 +7,8 @@ from pathlib import Path
 import numpy as np 
 import joblib
 
-from sklearn.base import BaseEstimator
 from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import precision_score
-from scipy.stats import randint, uniform, loguniform
-
 
 from app.exception.exceptions import NetworkSecurityException
 from app.logging.logger import logger 
@@ -52,6 +49,20 @@ def save_numpy_array_data(file_path: Path, array: np.array):
     except Exception as e:
         raise NetworkSecurityException(e, sys) from e
 
+def load_numpy_array_data(file_path: str) -> np.array:
+    """
+    load numpy array data from file
+    file_path: str location of file to load
+    return: np.array data loaded
+    """
+    try:
+        with open(file_path, "rb") as file_obj:
+            return np.load(file_obj)
+    except Exception as e:
+        raise NetworkSecurityException(e, sys) from e
+    
+
+
 def save_object(file_path: Path, obj: object) -> None:
     try:
         os.makedirs(os.path.dirname(file_path),exist_ok=True)
@@ -61,6 +72,20 @@ def save_object(file_path: Path, obj: object) -> None:
     except Exception as e:
         raise NetworkSecurityException(e, sys) from e 
 
+def load_object(
+    file_path: Path, 
+    file_obj: object
+):
+    try:
+        if not Path(file_path).exists:
+            raise Exception(f"The file: {file_path} is not exists")
+        with open(file_path, "rb") as file_obj:
+            print(file_obj)
+            return joblib.load(file_obj)
+    except Exception as e:
+        raise NetworkSecurityException(e, sys) from e
+
+
 def evaluate_models(
     X_train: np.ndarray,
     y_train: np.ndarray,
@@ -69,7 +94,7 @@ def evaluate_models(
     models: dict,
     params: dict
 ) -> dict:
-    """Performs hyperparameter tuning on various 
+    """Performs random search hyperparameter tuning on various 
     models. The models are then trained and evaluated, we will 
     return dict containing the models performance"""
     try:

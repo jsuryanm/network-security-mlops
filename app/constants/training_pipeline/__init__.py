@@ -4,6 +4,7 @@ import sys
 import numpy as np 
 import pandas as pd 
 from pathlib import Path 
+
 # common constant variables for training pipeline 
 TARGET_COLUMN: str = "Result"
 PIPELINE_NAME: str = "NetworkSecurity"
@@ -15,6 +16,8 @@ TEST_FILE_NAME: str = "test.csv"
 
 SCHEMA_FILE_PATH: Path = Path('data_schema') / "schema.yaml"
 
+SAVED_MODEL_DIR: Path = Path('saved_models')
+MODEL_FILE_NAME: str = "model.pkl"
 
 
 
