@@ -202,3 +202,40 @@ curl -X POST http://localhost:8000/batch/predict -F "file=@data/phisingData.csv"
 2. [routes/predict.py](../app/api/routes/predict.py): the core flow.
 3. [main.py](../app/api/main.py): how startup wires things.
 4. [routes/train.py](../app/api/routes/train.py): background work.
+
+## 11. In what order to write the files
+
+Build from the bottom up: write things that depend on nothing first, and test after every step. Each step ends with something you can run.
+
+```mermaid
+flowchart TD
+    S1[1. schemas.py] --> S2[2. deps.py]
+    S2 --> S3[3. routes/health.py + main.py]
+    S3 --> S4[4. routes/predict.py]
+    S4 --> S5[5. routes/predictions.py]
+    S5 --> S6[6. pipeline/batch_pipeline.py]
+    S6 --> S7[7. routes/batch.py]
+    S7 --> S8[8. routes/train.py]
+    S8 --> S9[9. routes/__init__.py cleanup]
+    S9 --> S10[10. frontend/app.py]
+```
+
+| # | File | Write this | Check it works |
+|---|---|---|---|
+| 1 | `schemas.py` | Pydantic request/response models. No imports from the rest of the app, so nothing can break | `python -c "from app.api.schemas import PredictRequest"` |
+| 2 | `deps.py` | `now()`, model loader, `reload_model()`. Plain Python, no endpoints yet | Call `_load_network_model()` in a shell, it returns a model |
+| 3 | `routes/health.py` + `main.py` | The smallest endpoint, plus the lifespan that creates Mongo client and loads the model. This proves the wiring | `uvicorn app.api.main:app`, open `/health` and `/docs` |
+| 4 | `routes/predict.py` | The core feature: validate, `to_thread` predict, background log | Swagger "Try it out" with the example body |
+| 5 | `routes/predictions.py` | Reads back what step 4 logged. Uses `asyncio.gather` | `/predictions` shows your rows |
+| 6 | `pipeline/batch_pipeline.py` | `predict_frame()` as a pure function, no FastAPI | Run it on `data/phisingData.csv` in a shell, try `chunk_size=7` |
+| 7 | `routes/batch.py` | Thin wrapper: upload, call step 6, return CSV | Upload a CSV in Swagger |
+| 8 | `routes/train.py` | Background task. Last because it is slowest to test and needs everything else | `POST /train`, poll `/train/status` |
+| 9 | `routes/__init__.py` | Split into modules once they work. Until now you can register each router straight in `main.py` | All paths appear in `/docs` |
+| 10 | `frontend/app.py` | A UI only makes sense once the API is stable | `streamlit run frontend/app.py` |
+
+Rules of thumb:
+- **Schemas first.** Deciding the input/output shape up front tells you what every endpoint must do.
+- **Smallest endpoint first.** `/health` tells you early if the lifespan, settings or Mongo are broken, before any logic is involved.
+- **Logic in plain functions, endpoints stay thin.** Step 6 before step 7 means you can test the hard part without HTTP.
+- **Slow or risky features last.** Training is minutes long and touches DagsHub, so add it once the rest is solid.
+- **Run the app after every step.** A bug found one file after you wrote it is easy to place.
