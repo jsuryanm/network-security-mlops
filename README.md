@@ -4,8 +4,8 @@ End-to-end MLOps project that detects **phishing websites** from 30 URL/page fea
 ## How it works
 
 ```
-MongoDB ─> Data ingestion ─> Data validation ─> Data transformation ─> Model training ─> (API: not built yet)
-           train/test CSV    schema + drift      KNN imputer, .npy     random search, MLflow
+MongoDB ─> Data ingestion ─> Data validation ─> Data transformation ─> Model training ─> FastAPI ─> Streamlit UI
+           train/test CSV    schema + drift      KNN imputer, .npy     random search, MLflow   /predict, /batch, /train
 ```
 
 | Stage | Status | Code |
@@ -15,7 +15,8 @@ MongoDB ─> Data ingestion ─> Data validation ─> Data transformation ─> M
 | 2. Data validation (schema + drift) | Done | [data_validation.py](app/components/data_validation.py) |
 | 3. Data transformation | Done | [data_transformation.py](app/components/data_transformation.py) |
 | 4. Model training (random search + MLflow) | Done | [model_trainer.py](app/components/model_trainer.py) |
-| API | Not started | |
+| API (predict, batch, history, train) | Done | [app/api/](app/api/) |
+| Streamlit UI | Done | [frontend/app.py](frontend/app.py) |
 | Experiments (EDA, features, models) | Done | [notebooks/](notebooks/) |
 
 Best model so far (from the notebooks): HistGradientBoosting, test F1 0.974 (recall 96.6%, precision 98.2%).
@@ -32,6 +33,15 @@ uv run python main.py                # 4. run the whole pipeline
 ```
 
 All commands run from the project root.
+
+### Run the API and UI (after training once)
+
+```bash
+uv run uvicorn app.api.main:app --reload   # API   http://localhost:8000  (Swagger: /docs)
+uv run streamlit run frontend/app.py       # UI    http://localhost:8501
+```
+
+The API loads `final_models/model.pkl` and `final_models/preprocessor.pkl`, which the pipeline writes. Without them `/predict` returns 503; train via the UI's **Train** tab or `POST /train`.
 
 ## Setup details
 
@@ -198,6 +208,29 @@ xdg-open Artifacts/<timestamp>/data_validation/drift_report/report.html   # macO
 ```
 Thresholds live in [app/constants/training_pipeline/__init__.py](app/constants/training_pipeline/__init__.py).
 
+## API and UI
+
+| Endpoint | What it does |
+|---|---|
+| `GET /health` | MongoDB, MLflow and model status (checked in parallel) |
+| `POST /predict` | JSON `{"records":[{30 features}]}` returns `phishing` or `legitimate` per record, and logs to MongoDB |
+| `GET /predictions?limit=&skip=` | Logged prediction history, newest first |
+| `POST /batch/predict` | Upload a CSV, get back the same rows plus `prediction` and `label` |
+| `POST /train`, `GET /train/status` | Run the full pipeline in the background, then hot-reload the model |
+
+```mermaid
+flowchart LR
+    UI[Streamlit UI] --> API[FastAPI]
+    API --> M[(model in memory<br/>final_models/)]
+    API <--> DB[(MongoDB<br/>predictions)]
+    API -->|background| TP[Training pipeline]
+    TP --> M
+```
+
+Label `1` = legitimate, `0` = phishing. The API is async: blocking sklearn work runs in threads, and independent DB/network calls run in parallel with `asyncio.gather`. Use **one** uvicorn worker (training status is kept in memory). Set `API_URL` if the UI should call a different API address.
+
+New to FastAPI? Read [docs/fastapi_backend.md](docs/fastapi_backend.md).
+
 ## Notebooks
 Experiments only, no production code. Run them in order. They read and write `Artifacts/notebooks/`.
 
@@ -217,6 +250,9 @@ uv run jupyter lab notebooks/
 ## Project layout
 ```
 main.py           runs the full pipeline
+app/api/          FastAPI backend (main, schemas, deps, routes/)
+app/pipeline/     training_pipeline.py, batch_pipeline.py (batch scoring)
+frontend/         Streamlit UI
 push_data.py      loads the CSV into MongoDB
 app/components/   pipeline stages (ingestion, validation, transformation, model trainer)
 app/entity/       config and artifact schemas
@@ -238,9 +274,13 @@ docs/             guides
 | Error shows only "line number [N]" | The real error is in the **first** traceback block. Read it from the top |
 | Validation fails with drift | Open `drift_report/report.html` and see which columns moved |
 | MLflow UI: `Unexpected token '<', "<!doctype"... is not valid JSON`, server log `cannot import name 'ResolveInfo' from 'graphql'` | `graphene` and `graphql-core` versions clash. Keep `graphene>=3.4,<4` (pinned in `pyproject.toml`), run `uv sync`, restart `mlflow ui` |
+| `/predict` returns 503 "Model not loaded" | `final_models/` is empty. Run `uv run python main.py` or `POST /train` |
+| Streamlit shows "Cannot reach API" | Start the API first, or set `API_URL` |
+| `/train` fails at import with a DagsHub error | Check `DAGSHUB_REPO_OWNER`/`DAGSHUB_REPO_NAME` in `.env` |
 | `RecursionError` in a config property | A `@property` is reading itself. Build it from `training_pipeline_config.artifact_dir` instead |
 
 ## Docs
+- [FastAPI backend explained](docs/fastapi_backend.md)
 - [Logger guide](docs/logger.md)
 - [Data drift with Evidently](docs/data_drift_evidently.md)
 - [Data ingestion errors explained](docs/data_ingestion_errors.md)
