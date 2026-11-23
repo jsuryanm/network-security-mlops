@@ -31,7 +31,8 @@ from app.entity.config_entity import (
 
 from app.entity.artifact_entity import (
     DataTransformationArtifact,
-    ModelTrainerArtifact
+    ModelTrainerArtifact,
+    ClassificationMetricArtifact
 )
 
 from app.utils.ml_utils.estimator import NetworkModel
@@ -57,6 +58,27 @@ class ModelTrainer:
 
         except Exception as e:
             raise NetworkSecurityException(e, sys)
+
+    def track_mlflow(
+        self,
+        best_model: XGBClassifier,
+        clf_metric: ClassificationMetricArtifact
+    ):
+        with mlflow.start_run():
+            f1_score = clf_metric.f1_score
+            precision_score = clf_metric.precision_score
+            recall_score = clf_metric.recall_score
+
+            mlflow.log_metric("f1_score",f1_score)
+            mlflow.log_metric("precision_score",precision_score)
+            mlflow.log_metric("recall_score",recall_score)
+            mlflow.xgboost.log_model(
+                xgb_model=best_model,
+                name="model",
+                model_format='json',
+                registered_model_name="production_model"
+            )
+
 
     def train_model(
         self,
@@ -138,6 +160,7 @@ class ModelTrainer:
         y_train_pred = best_model.predict(X_train)
         y_test_pred = best_model.predict(X_test)
 
+        
         classification_train_metric = get_classification_score(
             y_true=y_train,
             y_pred=y_train_pred
@@ -148,6 +171,10 @@ class ModelTrainer:
             y_true=y_test,
             y_pred=y_test_pred
         )
+
+        # track the experiments with mlflow
+        self.track_mlflow(best_model, classification_train_metric)
+        
 
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
         network_model = NetworkModel(preprocessor=preprocessor, model=best_model)

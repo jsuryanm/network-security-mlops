@@ -552,6 +552,15 @@ wheels = [
 ]
 
 [[package]]
+name = "backoff"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001, upload-time = "2022-10-05T19:19:32.061Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148, upload-time = "2022-10-05T19:19:30.546Z" },
+]
+
+[[package]]
 name = "beautifulsoup4"
 version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1960,17 +1969,17 @@ wheels = [
 
 [[package]]
 name = "gql"
-version = "4.4.0"
+version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
+    { name = "backoff" },
     { name = "graphql-core" },
-    { name = "tenacity" },
     { name = "yarl" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/85/95/15fdc8ef0b3a5333a019ad1ade6097b3251a599637e9d477e938da97a030/gql-4.4.0.tar.gz", hash = "sha256:e54fe470d51347ceb46a04fc88c5553695d2d8c86b05bef13aeee8b8f2d5f61a", size = 234190, upload-time = "2026-09-27T16:40:07.193Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/9f/cf224a88ed71eb223b7aa0b9ff0aa10d7ecc9a4acdca2279eb046c26d5dc/gql-4.0.0.tar.gz", hash = "sha256:f22980844eb6a7c0266ffc70f111b9c7e7c7c13da38c3b439afc7eab3d7c9c8e", size = 215644, upload-time = "2025-08-17T14:32:35.397Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/75/c4/3c28d6e7d73072d1d94f4a4162f5ef6031f7b5a6fd420841fb4b78e8b9f7/gql-4.4.0-py3-none-any.whl", hash = "sha256:150ffd909a8814f14c9ca19ec9410afd572443253789d57e7efd6b92cc24d8f7", size = 96213, upload-time = "2026-09-27T16:40:06.031Z" },
+    { url = "https://files.pythonhosted.org/packages/ac/94/30bbd09e8d45339fa77a48f5778d74d47e9242c11b3cd1093b3d994770a5/gql-4.0.0-py3-none-any.whl", hash = "sha256:f3beed7c531218eb24d97cb7df031b4a84fdb462f4a2beb86e2633d395937479", size = 89900, upload-time = "2025-08-17T14:32:34.029Z" },
 ]
 
 [package.optional-dependencies]
@@ -1993,26 +2002,26 @@ wheels = [
 
 [[package]]
 name = "graphene"
-version = "2.0"
+version = "3.4.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "graphql-core" },
     { name = "graphql-relay" },
-    { name = "promise" },
-    { name = "six" },
+    { name = "python-dateutil" },
+    { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/05/08/bfd70dceb9038dd926be8ae5a496787a0f3ce26f63853c09de5d4541f0f4/graphene-2.0.tar.gz", hash = "sha256:d8b91565bdf3d3688b3d035b8a20768c49b2226e19bb21d280e0485d33f8e25c", size = 39485, upload-time = "2017-10-25T17:45:45.807Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/f6/bf62ff950c317ed03e77f3f6ddd7e34aaa98fe89d79ebd660c55343d8054/graphene-3.4.3.tar.gz", hash = "sha256:2a3786948ce75fe7e078443d37f609cbe5bb36ad8d6b828740ad3b95ed1a0aaa", size = 44739, upload-time = "2024-11-09T20:44:25.757Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/8e/7eade0737c3c94efcb433bb8189e56750df05744904e128ab2c8e229ed94/graphene-2.0-py2.py3-none-any.whl", hash = "sha256:543392c6027f78da9a0fcc9bf678b8db7dcd2528b4193644d8f63d73fe4e8b03", size = 102182, upload-time = "2017-10-25T17:45:43.408Z" },
+    { url = "https://files.pythonhosted.org/packages/66/e0/61d8e98007182e6b2aca7cf65904721fb2e4bce0192272ab9cb6f69d8812/graphene-3.4.3-py2.py3-none-any.whl", hash = "sha256:820db6289754c181007a150db1f7fff544b94142b556d12e3ebc777a7bf36c71", size = 114894, upload-time = "2024-11-09T20:44:23.851Z" },
 ]
 
 [[package]]
 name = "graphql-core"
-version = "3.3.2"
+version = "3.2.14"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0d/11/511b9487dd338a9cd98a8040a1f20feaa99b2f2e4921c049cb9cbbff2870/graphql_core-3.3.2.tar.gz", hash = "sha256:15d6eee7d4364fbc202833bc6bd0d504004d8ae7c0aaf620fa884d8e437622f2", size = 794346, upload-time = "2026-11-06T21:41:54.017Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9f/55/3f86cc857125e0a9d4ddf7a85a54c69d8c6436cd3c4e360ab6c4686140b8/graphql_core-3.2.14.tar.gz", hash = "sha256:efec124d951f2997e8f28bb9f056d0a3b4b11dce720e2225723ec20fac570af5", size = 610310, upload-time = "2026-11-06T21:41:59.878Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9b/c0/dec5c3a96d9e47c7aaaa6a062e065e6c738d67d11a9cda15705592f45409/graphql_core-3.3.2-py3-none-any.whl", hash = "sha256:d83f49ee18d2db89fb575dab6ffefa8aa1bf5f60dff8a6781db6f63420041348", size = 366135, upload-time = "2026-11-06T21:41:52.327Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/b8/c45a999940326178a32cc3ba7c88f7c661d0cff9399e78cb3898f9e96387/graphql_core-3.2.14-py3-none-any.whl", hash = "sha256:fb0eaaad81c558325f037a79dab7c6dd568cd17196030fb5c46fc4996948cc42", size = 279946, upload-time = "2026-11-06T21:41:58.085Z" },
 ]
 
 [[package]]
@@ -3186,6 +3195,7 @@ dependencies = [
     { name = "dvc" },
     { name = "evidently" },
     { name = "fastapi" },
+    { name = "graphene" },
     { name = "loguru" },
     { name = "mlflow" },
     { name = "numpy" },
@@ -3217,6 +3227,7 @@ requires-dist = [
     { name = "dvc", specifier = ">=3.67.1" },
     { name = "evidently", specifier = ">=0.7.23" },
     { name = "fastapi", specifier = ">=0.162.7" },
+    { name = "graphene", specifier = ">=3.4,<4" },
     { name = "loguru", specifier = ">=0.8.0" },
     { name = "mlflow", specifier = ">=3.18.0" },
     { name = "numpy", specifier = ">=2.5.4" },
@@ -4212,15 +4223,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/a5/40/61fccab02f0021d99
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b8/d0/2d400c99b00d83b6aa7a1e595f1ad48fc62e888d5848e9ecbc70622cf067/prettytable-3.19.0-py3-none-any.whl", hash = "sha256:66d0eaf75f21198e92ce09e59a12c140be76c78b8a89252e7e87ac8994f96383", size = 37554, upload-time = "2026-11-17T11:11:43.342Z" },
 ]
-
-[[package]]
-name = "promise"
-version = "2.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "six" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/9c/fb5d48abfe5d791cd496e4242ebcf87a4bb2e0c3dcd6e0ae68c11426a528/promise-2.3.tar.gz", hash = "sha256:dfd18337c523ba4b6a58801c164c1904a9d4d1b1747c7d5dbf45b693a49d93d0", size = 19534, upload-time = "2019-12-18T07:31:43.07Z" }
 
 [[package]]
 name = "prompt-toolkit"

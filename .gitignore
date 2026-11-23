@@ -230,3 +230,7 @@ graphify-out/*
 
 # KNNImputer object 
 final_model/*
+
+# mlflow
+mlflow.db 
+mlruns/*
