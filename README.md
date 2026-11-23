@@ -4,8 +4,8 @@ End-to-end MLOps project that detects **phishing websites** from 30 URL/page fea
 ## How it works
 
 ```
-MongoDB ─> Data ingestion ─> Data validation ─> Data transformation ─> (model training, API: not built yet)
-           train/test CSV    schema + drift      KNN imputer, .npy
+MongoDB ─> Data ingestion ─> Data validation ─> Data transformation ─> Model training ─> (API: not built yet)
+           train/test CSV    schema + drift      KNN imputer, .npy     random search, MLflow
 ```
 
 | Stage | Status | Code |
@@ -14,7 +14,8 @@ MongoDB ─> Data ingestion ─> Data validation ─> Data transformation ─> (
 | 1. Data ingestion | Done | [data_ingestion.py](app/components/data_ingestion.py) |
 | 2. Data validation (schema + drift) | Done | [data_validation.py](app/components/data_validation.py) |
 | 3. Data transformation | Done | [data_transformation.py](app/components/data_transformation.py) |
-| Model training, API | Not started | |
+| 4. Model training (random search + MLflow) | Done | [model_trainer.py](app/components/model_trainer.py) |
+| API | Not started | |
 | Experiments (EDA, features, models) | Done | [notebooks/](notebooks/) |
 
 Best model so far (from the notebooks): HistGradientBoosting, test F1 0.974 (recall 96.6%, precision 98.2%).
@@ -53,7 +54,15 @@ MONGODB_USERNAME=<user>
 MONGODB_PASSWORD=<password>
 MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
 ```
-`MONGODB_URI` is the one used to connect. Never commit `.env`. Settings are read in [app/core/config.py](app/core/config.py).
+`MONGODB_URI` is the one used to connect. Never commit `.env`.
+
+To log training runs to a remote MLflow server (for example DagsHub), also set the values from [.env.example](.env.example):
+```env
+MLFLOW_TRACKING_URI=https://dagshub.com/<user>/<repo>.mlflow
+MLFLOW_TRACKING_USERNAME=<username>
+MLFLOW_TRACKING_PASSWORD=<token>
+```
+Leave them out to track locally. Settings are read in [app/core/config.py](app/core/config.py).
 
 Check the connection (expect `{'ok': 1.0}`):
 ```bash
@@ -79,7 +88,7 @@ mongosh "$MONGODB_URI" --eval 'db.getSiblingDB("Surya").NetworkData.countDocumen
 uv run python main.py
 ```
 
-This runs ingestion, validation and transformation in order. Progress is printed through the logger and saved to `logs/<date>/<time>.log`. A successful run ends with `Completed data transformation`.
+This runs ingestion, validation, transformation and model training in order. Progress is printed through the logger and saved to `logs/<date>/<time>.log`. A successful run ends with `Completed model trainer`. Training tunes six models, so it takes longer than the other stages (Gradient Boosting and XGBoost are the slowest).
 
 Run only the first stage on its own:
 ```bash
@@ -93,8 +102,23 @@ uv run python app/components/data_ingestion.py
 | **1. Ingestion** | Reads the MongoDB collection, saves it, splits 80/20 | `data_ingestion/feature_store/NetworkData.csv`, `data_ingestion/ingested/train.csv`, `test.csv` |
 | **2. Validation** | Checks the column count against `data_schema/schema.yaml`, then checks data drift. Passing files go to `validated/`, failing files to `invalid/` | `data_validation/validated/` or `invalid/`, `data_validation/drift_report/report.yaml` and `report.html` |
 | **3. Transformation** | Maps the target `-1` to `0`, fits a KNN imputer (3 neighbours) on train, applies it to train and test | `data_transformation/transformed/train.npy`, `test.npy`, `transformed_object/preprocessing.pkl` |
+| **4. Model training** | Tunes 6 models with `RandomizedSearchCV`, keeps the one with the best test precision, logs it to MLflow, saves it with the imputer | `model_trainer/trained_model/model.pkl` |
 
 The fitted imputer is also saved as `final_model/preprocessor.pkl` for later use at prediction time. `Artifacts/` and `final_model/` are gitignored.
+
+### Model training (stage 4)
+[model_trainer.py](app/components/model_trainer.py) tunes these models: Random Forest, XGBoost, Decision Tree, Gradient Boosting, Logistic Regression and AdaBoost.
+- Each model has a search space in `param_distribs`, built from `scipy.stats` distributions (`randint`, `uniform`, `loguniform`) and plain lists.
+- [evaluate_models](app/utils/main_utils/utils.py) runs `RandomizedSearchCV` (`n_iter=10`, `cv=3`, scored on precision), refits each model with its best parameters and reports test precision.
+- The model with the highest test precision wins. Train and test precision, recall and F1 are computed for it.
+- The saved `model.pkl` is a `NetworkModel` that holds the preprocessor and the model, so raw features can go straight into `predict`.
+
+### MLflow tracking
+Each training run logs F1, precision and recall, and registers the model as `production_model`. Set the tracking server in `.env` (see below). Without it MLflow writes to a local store (`mlflow.db`, `mlruns/`, both gitignored).
+
+```bash
+uv run mlflow ui          # then open http://127.0.0.1:5000
+```
 
 ### Data drift check (stage 2)
 Uses [Evidently](https://github.com/evidentlyai/evidently): train is the reference, test is the current data.
@@ -118,6 +142,7 @@ Experiments only, no production code. Run them in order. They read and write `Ar
 | [03_feature_engineering](notebooks/03_feature_engineering.ipynb) | Feature ranking, encoding, new features, PCA |
 | [04_model_training_tuning](notebooks/04_model_training_tuning.ipynb) | Compare 10 models, tune with `RandomizedSearchCV` |
 | [05_model_testing_evaluation](notebooks/05_model_testing_evaluation.ipynb) | Test-set metrics, thresholds, error analysis |
+| [08_model_trainer](notebooks/08_model_trainer.ipynb) | Prototype of the trainer: `RandomizedSearchCV` over 5 models |
 
 ```bash
 uv run jupyter lab notebooks/
@@ -127,10 +152,10 @@ uv run jupyter lab notebooks/
 ```
 main.py           runs the full pipeline
 push_data.py      loads the CSV into MongoDB
-app/components/   pipeline stages (ingestion, validation, transformation)
+app/components/   pipeline stages (ingestion, validation, transformation, model trainer)
 app/entity/       config and artifact schemas
 app/constants/    constants (paths, drift thresholds, imputer settings)
-app/utils/        shared helpers (YAML, numpy, pickle)
+app/utils/        shared helpers (YAML, numpy, pickle, model evaluation, metrics)
 data_schema/      schema.yaml, the expected columns
 notebooks/        experiments
 docs/             guides
@@ -146,8 +171,11 @@ docs/             guides
 | `FileNotFoundError: data_schema/schema.yaml` | Run from the project root |
 | Error shows only "line number [N]" | The real error is in the **first** traceback block. Read it from the top |
 | Validation fails with drift | Open `drift_report/report.html` and see which columns moved |
+| MLflow UI: `Unexpected token '<', "<!doctype"... is not valid JSON`, server log `cannot import name 'ResolveInfo' from 'graphql'` | `graphene` and `graphql-core` versions clash. Keep `graphene>=3.4,<4` (pinned in `pyproject.toml`), run `uv sync`, restart `mlflow ui` |
+| `RecursionError` in a config property | A `@property` is reading itself. Build it from `training_pipeline_config.artifact_dir` instead |
 
 ## Docs
 - [Logger guide](docs/logger.md)
 - [Data drift with Evidently](docs/data_drift_evidently.md)
 - [Data ingestion errors explained](docs/data_ingestion_errors.md)
+- [Model trainer errors and fixes](docs/model_trainer_debugging.md)
