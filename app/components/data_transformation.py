@@ -15,7 +15,7 @@ from app.constants.training_pipeline import (
 )
 from app.entity.artifact_entity import (
     DataValidationArtifact,
-    DataTranformationArtifact
+    DataTransformationArtifact
 )
 
 from app.entity.config_entity import DataTransformationConfig
@@ -55,7 +55,7 @@ class DataTransformation:
         except Exception as e:
             raise NetworkSecurityException(e, sys)
      
-    def initiate_data_transformation(self) -> DataTranformationArtifact:
+    def initiate_data_transformation(self) -> DataTransformationArtifact:
         try:
             logger.info("Performing the data transformation")
  
@@ -87,7 +87,7 @@ class DataTransformation:
 
             logger.info("Saving the transformed training and test data and Imputer object.")
 
-            data_transformation_artifact =  DataTranformationArtifact(
+            data_transformation_artifact =  DataTransformationArtifact(
                 transformed_object_file_path=self.data_transformation_config.transformed_object_file_path,
                 transformed_train_file_path=self.data_transformation_config.transformed_train_file_path,
                 transformed_test_file_path=self.data_transformation_config.transformed_test_file_path

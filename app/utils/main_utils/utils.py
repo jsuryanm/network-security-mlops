@@ -72,15 +72,11 @@ def save_object(file_path: Path, obj: object) -> None:
     except Exception as e:
         raise NetworkSecurityException(e, sys) from e 
 
-def load_object(
-    file_path: Path, 
-    file_obj: object
-):
+def load_object(file_path: Path) -> object:
     try:
-        if not Path(file_path).exists:
-            raise Exception(f"The file: {file_path} is not exists")
+        if not Path(file_path).exists():
+            raise FileNotFoundError(f"The file: {file_path} does not exist")
         with open(file_path, "rb") as file_obj:
-            print(file_obj)
             return joblib.load(file_obj)
     except Exception as e:
         raise NetworkSecurityException(e, sys) from e
@@ -118,15 +114,14 @@ def evaluate_models(
 
             best_params = rnd_search.best_params_
             model.set_params(**best_params)
-            model.fit(X_train)
+            model.fit(X_train, y_train)
 
             y_train_pred = model.predict(X_train)
             y_test_pred = model.predict(X_test)
 
-            train_model_score = precision_score(y_train_pred, y_train)
-            test_model_score = precision_score(y_test_pred, y_test)
-
-            report[models.get(key)] = test_model_score
+            train_model_score = precision_score(y_train, y_train_pred)
+            test_model_score = precision_score(y_test, y_test_pred)
+            report[key] = test_model_score
 
         return report
 

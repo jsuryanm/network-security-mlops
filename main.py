@@ -1,9 +1,15 @@
 from app.entity.config_entity import TrainingPipelineConfig
-from app.entity.config_entity import DataIngestionConfig, DataValidationConfig, DataTransformationConfig
+from app.entity.config_entity import (
+    DataIngestionConfig, 
+    DataValidationConfig, 
+    DataTransformationConfig,
+    ModelTrainerConfig
+)
 
 from app.components.data_ingestion import DataIngestion
 from app.components.data_validation import DataValidation
 from app.components.data_transformation import DataTransformation
+from app.components.model_trainer import ModelTrainer
 
 from app.exception.exceptions import NetworkSecurityException
 
@@ -42,6 +48,14 @@ if __name__ == "__main__":
         )
         data_transformation_artifact = data_transformation.initiate_data_transformation()
         logger.info(f"Completed data transformation: {data_transformation_artifact}")
-    
+
+        model_trainer_config = ModelTrainerConfig(training_pipeline_config=training_pipeline_config)
+        model_trainer = ModelTrainer(
+            model_trainer_config=model_trainer_config,
+            data_transformation_artifact=data_transformation_artifact
+        )
+        model_trainer_artifact = model_trainer.initiate_model_trainer()
+        logger.info(f"Completed model trainer: {model_trainer_artifact}")
+
     except Exception as e:
         raise NetworkSecurityException(e, sys)

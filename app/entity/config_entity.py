@@ -195,15 +195,14 @@ class ModelTrainerConfig(BaseModel):
     @property
     def model_trainer_dir(self) -> Path:
         return (
-            self.model_trainer_dir /
+            self.training_pipeline_config.artifact_dir /
             training_pipeline.MODEL_TRAINER_DIR_NAME
         )
 
     @property
     def trained_model_file_path(self) -> Path:
         return (
-            self.model_trainer_dir / 
-            training_pipeline.MODEL_TRAINER_DIR_NAME /
+            self.model_trainer_dir /
             training_pipeline.MODEL_TRAINER_TRAINED_MODEL_DIR /
             training_pipeline.MODEL_TRAINER_TRAINED_MODEL_NAME
         )

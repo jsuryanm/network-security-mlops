@@ -1,5 +1,3 @@
-from pathlib import Path 
-import os 
 import sys 
 
 import numpy as np
@@ -70,14 +68,14 @@ class ModelTrainer:
         models = {
             "Random Forest": RandomForestClassifier(
                 random_state=42,
-                verbose=1
+                n_jobs=-1
             ),
             "XGBoost Classifier": XGBClassifier(),
             "Decision Tree": DecisionTreeClassifier(random_state=42),
             "Gradient Boosting": GradientBoostingClassifier(random_state=42),
             "Logistic Regression": LogisticRegression(
                 random_state=42,
-                verbose=1
+                max_iter=1000
             ),
             "Adaboost": AdaBoostClassifier(random_state=42)
         }
@@ -133,13 +131,10 @@ class ModelTrainer:
             params=param_distribs
         )
 
-        best_model_score = models[best_model_name]
+        best_model_name = max(model_report, key=model_report.get)
+        logger.info(f"Best Model: {best_model_name} | Precision: {model_report[best_model_name]:.4f}")
 
-        best_model_name = list(model_report.keys())[
-            list(model_report.values()).index(best_model_score)
-        ]
-
-        best_model = model_report[best_model_name]
+        best_model = models[best_model_name]
         y_train_pred = best_model.predict(X_train)
         y_test_pred = best_model.predict(X_test)
 
@@ -155,13 +150,18 @@ class ModelTrainer:
         )
 
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
-        model_dir_path = Path(self.model_trainer_config.trained_model_file_path)
-        os.makedirs(model_dir_path,exist_ok=True)
+        network_model = NetworkModel(preprocessor=preprocessor, model=best_model)
+        save_object(file_path=self.model_trainer_config.trained_model_file_path, obj=network_model)
 
-        network_model = NetworkModel(preprocessor=preprocessor)
+        model_trainer_artifact = ModelTrainerArtifact(
+            trained_model_file_path=self.model_trainer_config.trained_model_file_path,
+            trained_metric_artifact=classification_train_metric,
+            test_metric_artifact=classification_test_metric
+        )
 
-        # Track mlflow
+        logger.info(f"Model trainer artifact: {model_trainer_artifact}")
 
+        return model_trainer_artifact
 
 
     
@@ -180,7 +180,14 @@ class ModelTrainer:
                 test_arr[:, -1],
             )
 
-            model = self.train_model(X_train, y_train)
+            model_trainer_artifact = self.train_model(
+                X_train=X_train,
+                y_train=y_train,
+                X_test=X_test,
+                y_test=y_test
+            )
+
+            return model_trainer_artifact
 
         except Exception as e:
             raise NetworkSecurityException(e, sys)
