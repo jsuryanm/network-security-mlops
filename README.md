@@ -106,6 +106,72 @@ uv run python app/components/data_ingestion.py
 
 The fitted imputer is also saved as `final_model/preprocessor.pkl` for later use at prediction time. `Artifacts/` and `final_model/` are gitignored.
 
+### Stage diagrams
+
+**1. Data ingestion**
+```mermaid
+flowchart TD
+    A[("MongoDB<br/>Surya / NetworkData")] --> B["Read collection into a DataFrame"]
+    B --> C["Drop _id column<br/>replace 'na' with NaN"]
+    C --> D["Save full data<br/>feature_store/NetworkData.csv"]
+    D --> E["train_test_split<br/>random_state=42"]
+    E --> F["ingested/train.csv"]
+    E --> G["ingested/test.csv"]
+    F --> H(["DataIngestionArtifact"])
+    G --> H
+```
+
+**2. Data validation**
+```mermaid
+flowchart TD
+    A(["DataIngestionArtifact"]) --> B["Read train.csv and test.csv"]
+    B --> C{"Column count matches<br/>schema.yaml?"}
+    C -- "No" --> X["Skip drift check"]
+    C -- "Yes" --> D["Evidently drift check<br/>train = reference, test = current"]
+    D --> E["Write drift_report<br/>report.yaml and report.html"]
+    E --> F{"Critical column drifted<br/>or 30% or more columns drifted?"}
+    F -- "Yes" --> X
+    F -- "No" --> V["validation_status = True<br/>save to validated/"]
+    X --> I["validation_status = False<br/>save to invalid/"]
+    V --> Z(["DataValidationArtifact"])
+    I --> Z
+```
+
+**3. Data transformation**
+```mermaid
+flowchart TD
+    A(["DataValidationArtifact"]) --> B["Read validated train.csv and test.csv"]
+    B --> C["Split features and target"]
+    C --> D["Target: replace -1 with 0"]
+    C --> E["KNN imputer<br/>fit on train features only"]
+    E --> F["Transform train and test features"]
+    D --> G["Join features and target<br/>into one array per split"]
+    F --> G
+    G --> H["transformed/train.npy<br/>transformed/test.npy"]
+    E --> I["transformed_object/preprocessing.pkl<br/>final_model/preprocessor.pkl"]
+    H --> Z(["DataTransformationArtifact"])
+    I --> Z
+```
+
+**4. Model trainer**
+```mermaid
+flowchart TD
+    A(["DataTransformationArtifact"]) --> B["Load train.npy and test.npy<br/>last column = target"]
+    B --> C["For each of 6 models<br/>Random Forest, XGBoost, Decision Tree,<br/>Gradient Boosting, Logistic Regression, AdaBoost"]
+    C --> D["RandomizedSearchCV<br/>10 samples, 3-fold CV, scored on precision"]
+    D --> E["Refit the model with its best parameters"]
+    E --> F["Test precision stored in the report"]
+    F --> G{"More models?"}
+    G -- "Yes" --> C
+    G -- "No" --> H["Pick the model with the highest test precision"]
+    H --> I["Compute precision, recall and F1<br/>on train and test"]
+    I --> J["Log metrics and model to MLflow<br/>register as production_model"]
+    I --> K["Wrap imputer and model<br/>in NetworkModel"]
+    K --> L["Save model_trainer/trained_model/model.pkl"]
+    J --> Z(["ModelTrainerArtifact"])
+    L --> Z
+```
+
 ### Model training (stage 4)
 [model_trainer.py](app/components/model_trainer.py) tunes these models: Random Forest, XGBoost, Decision Tree, Gradient Boosting, Logistic Regression and AdaBoost.
 - Each model has a search space in `param_distribs`, built from `scipy.stats` distributions (`randint`, `uniform`, `loguniform`) and plain lists.
