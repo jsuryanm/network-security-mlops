@@ -1,5 +1,6 @@
 import sys 
 
+from pathlib import Path 
 import numpy as np
 from scipy.stats import loguniform, randint, uniform
 
@@ -12,7 +13,6 @@ from sklearn.ensemble import (
     GradientBoostingClassifier,
     RandomForestClassifier
 )
-from sklearn.model_selection import RandomizedSearchCV
 
 from xgboost import XGBClassifier
 
@@ -184,6 +184,11 @@ class ModelTrainer:
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)
         network_model = NetworkModel(preprocessor=preprocessor, model=best_model)
         save_object(file_path=self.model_trainer_config.trained_model_file_path, obj=network_model)
+
+        final_model_path = Path("final_models")
+        final_model_path.mkdir(parents=True, exist_ok=True)
+        save_object(final_model_path / "model.pkl", best_model)
+
 
         model_trainer_artifact = ModelTrainerArtifact(
             trained_model_file_path=self.model_trainer_config.trained_model_file_path,

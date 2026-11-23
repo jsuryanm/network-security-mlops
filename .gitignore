@@ -231,6 +231,9 @@ graphify-out/*
 # KNNImputer object 
 final_model/*
 
+# pickle models 
+final_models/*
+
 # mlflow
 mlflow.db 
 mlruns/*
