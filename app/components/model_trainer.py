@@ -24,6 +24,8 @@ import dagshub
 from app.logging.logger import logger 
 from app.exception.exceptions import NetworkSecurityException
 
+from app.core.config import get_settings
+
 from app.entity.config_entity import (
     DataTransformationConfig,
     ModelTrainerConfig
@@ -44,6 +46,9 @@ from app.utils.main_utils.utils import (
 )
 
 from app.utils.ml_utils.classification_metric import get_classification_score
+
+settings = get_settings()
+dagshub.init(repo_owner=settings.dagshub_repo_owner, repo_name=settings.dagshub_repo_name, mlflow=True)
 
 
 class ModelTrainer:
