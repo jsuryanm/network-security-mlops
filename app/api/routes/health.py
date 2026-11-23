@@ -2,6 +2,7 @@ import asyncio
 
 import httpx
 from fastapi import APIRouter, Request
+# Request gives direct access to server to see HTTP request from client
 
 from app.api.schemas import HealthResponse
 

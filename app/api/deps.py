@@ -21,12 +21,17 @@ def _load_network_model() -> NetworkModel | None:
     preprocessor_path = FINAL_MODEL_DIR / "preprocessor.pkl"
     if not (model_path.exists() and preprocessor_path.exists()):
         return None
-    return NetworkModel(preprocessor=load_object(preprocessor_path), model=load_object(model_path))
+    
+    return NetworkModel(
+        preprocessor=load_object(preprocessor_path), 
+        model=load_object(model_path)
+    )
 
 
 async def reload_model(app: FastAPI) -> None:
     """Load pickles off the event loop, then swap the model reference."""
-    async with app.state.model_lock:
+    async with app.state.model_lock: # This safely controls access to shared resource 
+        # state.model refers to ml model stored in app's state 
         try:
             app.state.model = await asyncio.to_thread(_load_network_model)
         except Exception:
