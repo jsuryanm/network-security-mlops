@@ -281,6 +281,7 @@ docs/             guides
 
 ## Docs
 - [FastAPI backend explained](docs/fastapi_backend.md)
+- [Agentic AI roadmap](docs/agentic_ai_roadmap.md)
 - [Logger guide](docs/logger.md)
 - [Data drift with Evidently](docs/data_drift_evidently.md)
 - [Data ingestion errors explained](docs/data_ingestion_errors.md)
