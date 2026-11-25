@@ -5,11 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "apache-airflow>=3.4.0",
     "boto3>=1.44.7",
     "certifi>=2026.10.23",
     "dagshub>=0.7.3",
-    "dvc>=3.67.1",
     "evidently>=0.7.23",
     "fastapi>=0.162.7",
     "graphene>=3.4,<4",
@@ -24,9 +22,10 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
-    "streamlit>=1.67.0",
     "uvicorn[standard]>=0.54.0",
-    "xgboost>=3.4.1",
+    # CPU build on Linux: the default wheel drags in ~300 MB of NVIDIA NCCL libs
+    "xgboost-cpu>=3.4.1; sys_platform == 'linux'",
+    "xgboost>=3.4.1; sys_platform != 'linux'",
 ]
 
 [build-system]
@@ -37,7 +36,18 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["app*"]
 
+[tool.uv]
+# A plain `uv sync` still installs everything; Docker passes --no-default-groups.
+default-groups = ["dev", "frontend"]
+
 [dependency-groups]
+# Streamlit UI only (see frontend/Dockerfile)
+frontend = [
+    "httpx>=0.28.1",
+    "pandas>=2.3,<3",
+    "pyyaml>=6.0.3",
+    "streamlit>=1.67.0",
+]
 dev = [
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",

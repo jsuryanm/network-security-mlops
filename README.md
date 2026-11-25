@@ -292,6 +292,15 @@ xdg-open Artifacts/<timestamp>/data_validation/drift_report/report.html   # macO
 ```
 Thresholds live in [app/constants/training_pipeline/__init__.py](app/constants/training_pipeline/__init__.py).
 
+## Run with Docker
+
+```bash
+cp .env.example .env            # then fill in your values (KEY=value, no spaces around =)
+docker compose up --build       # UI http://localhost:8501, API http://localhost:8000/docs
+```
+
+Two small images (backend, frontend) and a compose file for local development. MongoDB stays on Atlas (cloud URI from `.env`). Explained step by step in [docs/docker_images.md](docs/docker_images.md) and [docs/docker_compose.md](docs/docker_compose.md). A plain `uv sync` still installs everything for local work. Docker installs only what each image needs.
+
 ## API and UI
 
 | Endpoint | What it does |
@@ -369,6 +378,8 @@ docs/             guides
 
 ## Docs
 - [FastAPI backend explained](docs/fastapi_backend.md)
+- [Docker images explained](docs/docker_images.md)
+- [docker-compose explained](docs/docker_compose.md)
 - [Agentic AI roadmap](docs/agentic_ai_roadmap.md)
 - [Logger guide](docs/logger.md)
 - [Data drift with Evidently](docs/data_drift_evidently.md)

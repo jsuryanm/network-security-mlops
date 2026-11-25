@@ -1,0 +1,36 @@
+# Local development stack.
+#   docker compose up --build     backend + frontend (MongoDB is the cloud URI in .env)
+services:
+  backend:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"   # loopback only: not reachable from other machines
+    env_file: .env                      # MONGODB_URI, DAGSHUB_*, MLFLOW_URI, TRAINING_BUCKET_NAME ...
+    environment:
+      AWS_SHARED_CREDENTIALS_FILE: /home/app/.aws/credentials   # for the S3 upload after /train
+      AWS_CONFIG_FILE: /home/app/.aws/config
+    volumes:
+      - ./app:/app/app                  # live code: edits reload the server
+      - ./final_models:/app/final_models
+      - ./Artifacts:/app/Artifacts
+      - ./logs:/app/logs
+      - ${HOME}/.aws:/home/app/.aws:ro  # your `aws configure` credentials, read-only
+    # --reload restarts on code change. Fine for dev; one worker only.
+    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--reload", "--reload-dir", "app"]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "127.0.0.1:8501:8501"
+    environment:
+      API_URL: http://backend:8000      # service name = hostname on the compose network
+    volumes:
+      - ./frontend:/app/frontend        # Streamlit reloads when you save
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

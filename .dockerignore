@@ -1,0 +1,26 @@
+# secrets and local state: never copied into an image
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.venv
+**/__pycache__
+*.egg-info
+.pytest_cache
+
+# runtime data (mounted as volumes instead)
+Artifacts
+final_model
+final_models
+logs
+mlruns
+mlflow.db
+
+# not needed at runtime
+notebooks
+graphify-out
+docs
+tests
+data
+*.md
