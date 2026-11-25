@@ -19,7 +19,7 @@ MongoDB ─> Data ingestion ─> Data validation ─> Data transformation ─> M
 | Streamlit UI | Done | [frontend/app.py](frontend/app.py) |
 | Experiments (EDA, features, models) | Done | [notebooks/](notebooks/) |
 
-Best model so far (from the notebooks): HistGradientBoosting, test F1 0.974 (recall 96.6%, precision 98.2%).
+Best model so far (from the notebooks): HistGradientBoosting, test F1 0.974 (recall 96.6%, precision 98.2%). Full comparison, limitations and next steps: [Model performance](#model-performance).
 
 ## Quick start
 
@@ -291,6 +291,95 @@ Open the visual report in a browser:
 xdg-open Artifacts/<timestamp>/data_validation/drift_report/report.html   # macOS: open
 ```
 Thresholds live in [app/constants/training_pipeline/__init__.py](app/constants/training_pipeline/__init__.py).
+
+## Model performance
+
+Results from the experiment notebooks ([04](notebooks/04_model_training_tuning.ipynb) tuning, [05](notebooks/05_model_testing_evaluation.ipynb) testing). I recomputed the test scores below from the saved tuned models and they match the notebook output.
+
+**Data:** 11,055 rows, 30 features (each `-1`, `0` or `1`), 4,898 phishing (44.3%) and 6,157 legitimate (55.7%). Stratified 80/20 split with `random_state=42`: 8,844 train rows and 2,211 test rows (980 phishing, 1,231 legitimate). In these tables **phishing is the positive class**, so recall means "how many phishing sites we caught".
+
+### 1. Held-out test results (tuned models, sorted by F1)
+
+| Model | Accuracy | Precision | Recall | **F1** | ROC AUC | MCC | Train-test F1 gap |
+|---|---|---|---|---|---|---|---|
+| **HistGradientBoosting** | 0.9774 | 0.9824 | 0.9663 | **0.9743** | 0.9977 | 0.9542 | 0.0144 |
+| ExtraTrees | 0.9769 | 0.9834 | 0.9643 | 0.9737 | 0.9983 | 0.9533 | 0.0146 |
+| Voting ensemble (top 3) | 0.9760 | 0.9813 | 0.9643 | 0.9727 | 0.9983 | 0.9515 | 0.0160 |
+| RandomForest | 0.9751 | 0.9803 | 0.9633 | 0.9717 | 0.9980 | 0.9496 | 0.0170 |
+| GradientBoosting | 0.9715 | 0.9751 | 0.9602 | 0.9676 | 0.9970 | 0.9423 | 0.0132 |
+| LogisticRegression | 0.9394 | 0.9425 | 0.9194 | 0.9308 | 0.9885 | 0.8771 | 0.0016 |
+
+### 2. Starting point: ten models with default settings (5-fold CV on the training set)
+
+| Model | F1 | ROC AUC | Fit time (s) |
+|---|---|---|---|
+| ExtraTrees | 0.9683 | 0.9909 | 0.29 |
+| MLP | 0.9665 | 0.9960 | 7.42 |
+| RandomForest | 0.9650 | 0.9945 | 0.30 |
+| HistGradientBoosting | 0.9610 | 0.9955 | 0.28 |
+| DecisionTree | 0.9568 | 0.9704 | 0.01 |
+| SVC (rbf) | 0.9483 | 0.9909 | 1.56 |
+| KNN | 0.9458 | 0.9882 | 0.05 |
+| GradientBoosting | 0.9398 | 0.9895 | 0.50 |
+| LogisticRegression | 0.9302 | 0.9862 | 0.11 |
+| AdaBoost | 0.9195 | 0.9837 | 0.18 |
+
+Random search lifted HistGradientBoosting from 0.9610 to 0.9687 (CV F1) and GradientBoosting from 0.9398 to 0.9653. The tree ensembles beat the linear and distance-based models by about 3 F1 points.
+
+### 3. Best model: HistGradientBoosting
+
+Selected by cross-validated F1 (0.9687), then confirmed on the test set.
+
+| | |
+|---|---|
+| Test F1 / precision / recall | **0.9743** / 0.9824 / 0.9663 |
+| Phishing sites caught / missed | 947 / 33 |
+| False alarms (legitimate flagged as phishing) / correct legitimate | 17 / 1,214 |
+| 95% bootstrap interval for F1 | 0.9670 to 0.9810 |
+
+The decision threshold trades missed phishing against false alarms (default is 0.5):
+
+| Threshold | Precision | Recall | F1 | Missed phishing | False alarms |
+|---|---|---|---|---|---|
+| 0.3 | 0.964 | 0.979 | 0.971 | 21 | 36 |
+| **0.5** | **0.982** | **0.966** | **0.974** | 33 | 17 |
+| 0.7 | 0.994 | 0.952 | 0.972 | 47 | 6 |
+
+**The top three models are statistically tied.** HistGradientBoosting beat ExtraTrees in only 63% of bootstrap resamples, and their intervals overlap almost completely. Treat "HistGradientBoosting is best" as "it is among the best", and pick on other grounds too: simplicity, speed, and probability quality (it has the lowest log loss of the single models, 0.0609).
+
+### 4. What the production pipeline picks
+
+`uv run python main.py` (or `POST /train`) runs its own search and chooses the model with the best **test precision** among six models:
+
+| Pipeline run | Selected model | Test precision | Test F1 / recall |
+|---|---|---|---|
+| Larger search space (Nov 23) | XGBoost | 0.9731 | not in the logs I checked |
+| Trimmed search, 5 iterations (Nov 25) | Random Forest | 0.9647 | 0.9719 / 0.9793 |
+
+Two things to know before comparing these with section 1: the pipeline's positive class is **legitimate** (it maps `-1` to `0`, so `1` means legitimate), so its precision and recall describe a different class; and it uses a non-stratified split, so its test set differs from the notebooks'. HistGradientBoosting and ExtraTrees are not in the pipeline's model list yet, so **a model trained by the pipeline (and then served by the API) is not the notebook winner.**
+
+## Limitations
+
+- **Duplicate rows inflate the scores a little.** 47.1% of the dataset's rows are exact duplicates of another row, and 65.8% of the test rows also appear in the training set. Accuracy is 0.9801 on those seen rows and 0.9722 on unseen ones (F1 0.9762 on unseen). The gap is small, but the headline numbers are somewhat optimistic.
+- **The leading models are within noise** (see the bootstrap result above), and every figure comes from **one split of one dataset**. There is no external or time-based validation, so I can't say how it performs on phishing sites from today.
+- **The pipeline selects on the test set**, and by precision. That leaks information from the test set into the choice, and precision is the wrong thing to optimise first when a missed phishing site costs more than a false alarm.
+- **The shorter search lowered the pipeline's score.** After I shrank the search for speed, the pipeline's best test precision dropped from 0.9731 to 0.9647, and the winner changed from XGBoost to Random Forest. This is consistent with a weaker search, but I did not isolate it as the only cause.
+- **The features are not extracted from a URL.** The model takes 30 ready-made indicators, so the system can't yet scan a real link end to end.
+- **Static data.** Phishing changes quickly. No drift against newer sites has been measured, and I don't know the dataset's collection date.
+- **Uncertain cases are weak.** Predictions with probability between 0.35 and 0.65 (37 test rows) were right only 62.2% of the time, versus 98.3% for confident ones. The probabilities are not calibrated.
+- **Small tuning budget.** Random search used a few settings per model, so tuned scores may leave something on the table.
+- **Nothing else is measured:** latency, cost per prediction, robustness to a deliberate attacker, and behaviour on missing or malformed features.
+
+## Future improvements
+
+1. **Clean the evaluation:** remove duplicate rows before splitting (or split by group), and add a time-based and an external test set.
+2. **Fix the selection in the pipeline:** choose by cross-validated F1 or recall with phishing as the positive class, never on the test set; add HistGradientBoosting and ExtraTrees; log the full per-model table to MLflow instead of only the winner.
+3. **Choose the threshold by cost:** set a recall target (for example, at most 20 missed phishing sites per 1,000) and pick the threshold from it.
+4. **Calibrate the probabilities** (isotonic or Platt) and send uncertain cases to a human.
+5. **Run a bigger search off the small server,** then compare against the quick search with confidence intervals.
+6. **Extract the 30 features from a live URL** in a sandboxed fetcher, and measure accuracy on freshly collected phishing sites (see [docs/agentic_ai_roadmap.md](docs/agentic_ai_roadmap.md)).
+7. **Monitor drift on live predictions** and retrain when it passes a threshold, with a human approving the promotion.
+8. **Explain predictions** (SHAP) and test robustness to feature tampering.
 
 ## Run with Docker
 
