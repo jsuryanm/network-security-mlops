@@ -390,6 +390,102 @@ docker compose -f docker-compose.local.yml up --build   # UI http://localhost:85
 
 Two small images (backend, frontend) and a compose file for local development. MongoDB stays on Atlas (cloud URI from `.env`). Explained step by step in [docs/docker_images.md](docs/docker_images.md) and [docs/docker_compose.md](docs/docker_compose.md). The plain `docker-compose.yml` is the AWS stack: see [docs/aws_deployment.md](docs/aws_deployment.md). A plain `uv sync` still installs everything for local work. Docker installs only what each image needs.
 
+## Deploy to AWS (Free Tier)
+
+Every push to `main` is tested, built into two Docker images, pushed to **ECR**, and started on one **EC2** server by a **self-hosted GitHub runner**. Short version below, every click and policy is in [docs/aws_deployment.md](docs/aws_deployment.md).
+
+```mermaid
+flowchart LR
+    P[git push main] --> T[GitHub: ruff + pytest]
+    T --> B[GitHub: build images, push to ECR<br/>uses IAM user key]
+    B --> D[Runner on EC2: pull images, compose up<br/>uses EC2 role, no keys]
+    D --> U[http://ELASTIC_IP:8501]
+```
+
+**Free Plan facts (accounts created on or after 2025-07-15).** You get up to about $200 in credits for about 6 months, then AWS bills you unless you stop. Pick an instance marked "Free tier eligible". Use **`t3.small` (2 GB RAM) plus 2 GB swap**. **Never train on the server**: train on your computer (the pipeline uploads the model to S3, the deploy job downloads it). Replace `<REGION>`, `<ACCOUNT_ID>` and `<BUCKET>` below, and use the same region everywhere.
+
+### A. In AWS (one time)
+
+1. **ECR, two private repositories** (console: ECR, Create repository; or CLI):
+   ```bash
+   aws ecr create-repository --repository-name network-security-backend  --region <REGION>
+   aws ecr create-repository --repository-name network-security-frontend --region <REGION>
+   ```
+   Then in each repo add a lifecycle rule "keep last 3 images" so storage stays small.
+2. **IAM user for GitHub** (IAM, Users, Create user `github-actions-ecr-push`, no console access, **Attach policies directly**). The policy lets it log in to ECR and push to **only those two repositories**. Include `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer`, or the push ends in `403 Forbidden`. Full JSON is in [Step 2](docs/aws_deployment.md#step-2-create-an-iam-user-for-github-attach-policies-directly). Then Security credentials, Create access key, **copy both values now**, the secret is shown once.
+3. **IAM role for the server** (IAM, Roles, Create role, AWS service, EC2, name `netsec-ec2-role`). Inline policy: pull from the two ECR repos, plus `s3:ListBucket` on `<BUCKET>` and `s3:GetObject`/`s3:PutObject` on `<BUCKET>/*`. JSON in [Step 3](docs/aws_deployment.md#step-3-create-the-ec2-servers-own-role).
+4. **Launch the EC2 server** (EC2, Launch instance):
+   - Ubuntu Server 24.04, `t3.small`, **20 GiB gp3**, a key pair for SSH.
+   - Security group inbound: **SSH 22** and **TCP 8501**, both from **My IP** only. Do **not** open 8000 and do not use `0.0.0.0/0` (the UI has no login).
+   - Advanced details: IAM instance profile `netsec-ec2-role`, metadata version **V2 only**, metadata hop limit **2** (containers cannot read the role with 1).
+5. **Elastic IP**: EC2, Elastic IPs, Allocate, Associate with the instance.
+6. **MongoDB Atlas**: Network Access, add the Elastic IP.
+7. **Budget alert**: Billing, Budgets, Create budget, **Zero spend** template with your email. Also note your credit expiry date under Billing, Free Tier.
+
+### B. On the server (one time, over SSH)
+
+```bash
+ssh -i your-key.pem ubuntu@<ELASTIC_IP>
+
+# Docker + AWS CLI
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER
+sudo apt-get install -y unzip curl
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o awscliv2.zip
+unzip -q awscliv2.zip && sudo ./aws/install
+exit                                   # log in again so the docker group applies
+```
+
+```bash
+ssh -i your-key.pem ubuntu@<ELASTIC_IP>
+
+# 2 GB swap so a busy moment does not kill the containers
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# check docker and that the instance role works (no keys needed)
+docker compose version && aws sts get-caller-identity
+
+# app folder and secrets
+sudo mkdir -p /opt/netsec && sudo chown $USER:$USER /opt/netsec
+cd /opt/netsec && mkdir -p final_models Artifacts logs
+nano .env && chmod 600 .env
+```
+
+`/opt/netsec/.env` uses the same names as your local `.env` (`MONGODB_URI`, `MLFLOW_URI`, `DAGSHUB_*`, `TRAINING_BUCKET_NAME`) plus `AWS_DEFAULT_REGION=<REGION>`. **No AWS keys.** Write `KEY=value` with no spaces around `=`.
+
+### C. In GitHub (one time)
+
+1. **Register the runner on the server** (run as the normal user, **never with sudo**). Open the repo, Settings, Actions, Runners, **New self-hosted runner**, choose Linux x64. Copy the download commands and the token from that page (they change with each release, the token lasts about an hour), then:
+   ```bash
+   cd ~/actions-runner                # created by the download commands on that page
+   sudo ./bin/installdependencies.sh
+   ./config.sh --url https://github.com/<OWNER>/<REPO> --token <TOKEN> --name netsec-ec2 --unattended
+   sudo ./svc.sh install && sudo ./svc.sh start
+   sudo ./svc.sh status               # active (running); GitHub shows the runner as Idle
+   ```
+2. **Add the repository secrets** (Settings, Secrets and variables, Actions), or with the GitHub CLI:
+   ```bash
+   gh secret set AWS_REGION                    --body "<REGION>"
+   gh secret set ECR_REPOSITORY_NAME           --body "network-security-backend"
+   gh secret set ECR_FRONTEND_REPOSITORY_NAME  --body "network-security-frontend"
+   gh secret set AWS_ACCESS_KEY_ID             # paste the key id when asked
+   gh secret set AWS_SECRET_ACCESS_KEY         # paste the secret when asked
+   ```
+   Paste values with **no leading or trailing space**. A stray space in a repository name breaks the build with `invalid reference format`.
+
+### D. Deploy
+
+```bash
+uv run uvicorn app.api.main:app     # on your computer: train once (UI Train tab or POST /train) so a model lands in S3
+git push origin main                # starts the workflow
+```
+
+Watch the three jobs in the Actions tab: tests, build and push, deploy. Then open `http://<ELASTIC_IP>:8501`. If the deploy log says `WARNING: no model`, train locally and re-run the workflow.
+
+**Stop the bill:** terminate the instance, release the Elastic IP, delete both ECR repositories, remove the runner. Details and troubleshooting: [docs/aws_deployment.md](docs/aws_deployment.md#8-costs-and-cleanup).
+
 ## API and UI
 
 | Endpoint | What it does |
