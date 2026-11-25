@@ -92,6 +92,62 @@ Count the documents:
 mongosh "$MONGODB_URI" --eval 'db.getSiblingDB("Surya").NetworkData.countDocuments()'
 ```
 
+### AWS S3 (artifact backup)
+
+`TrainingPipeline` (used by `POST /train`) uploads each run to S3: `Artifacts/<timestamp>/` goes to `s3://<bucket>/artifact/<timestamp>/` and `final_models/` goes to `s3://<bucket>/final_model/<timestamp>/`. Unchanged files are skipped. Running `main.py` does **not** upload.
+
+**1. Install and sign in to the AWS CLI** (v2): https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+
+**2. Create the bucket** (names are global, so `netsecml` may be taken; if so pick another and set `TRAINING_BUCKET_NAME` in `app/constants/training_pipeline/__init__.py`). Names allow lowercase letters, digits and hyphens, not underscores.
+```bash
+aws s3 mb s3://netsecml --region <your-region>
+```
+Keep the bucket private (the default).
+
+**3. Create an IAM user for this project** (do not use the root account)
+1. AWS Console, IAM, Users, **Create user** (name e.g. `netsec-ml`), no console access.
+2. Permissions, **Create policy**, JSON tab, paste this (replace the bucket name if you changed it), name it `netsec-ml-s3`:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListBucket",
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::netsecml"
+    },
+    {
+      "Sid": "ReadWriteObjects",
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject"],
+      "Resource": "arn:aws:s3:::netsecml/*"
+    }
+  ]
+}
+```
+3. Attach `netsec-ml-s3` to the user.
+4. User, **Security credentials**, **Create access key**, choose "Command Line Interface", and copy the access key ID and secret (shown once).
+
+`ListBucket` is needed: without it, S3 answers 403 instead of "not found" when the code checks whether a file already exists.
+
+**4. Give the credentials to your machine with `aws configure`**
+```bash
+aws configure
+# AWS Access Key ID:     <paste>
+# AWS Secret Access Key: <paste>
+# Default region name:   <your-region>   (same region as the bucket)
+# Default output format: json
+```
+This writes `~/.aws/credentials` and `~/.aws/config`. The code uses boto3, which reads the same files, so nothing goes in `.env`. Never commit access keys.
+
+**5. Check it works**
+```bash
+aws sts get-caller-identity          # shows the IAM user
+aws s3 ls s3://netsecml              # empty output is fine; an error is not
+```
+After a successful `POST /train`, `aws s3 ls s3://netsecml/artifact/` lists the run.
+
 ## Run the pipeline
 
 ```bash
@@ -114,7 +170,35 @@ uv run python app/components/data_ingestion.py
 | **3. Transformation** | Maps the target `-1` to `0`, fits a KNN imputer (3 neighbours) on train, applies it to train and test | `data_transformation/transformed/train.npy`, `test.npy`, `transformed_object/preprocessing.pkl` |
 | **4. Model training** | Tunes 6 models with `RandomizedSearchCV`, keeps the one with the best test precision, logs it to MLflow, saves it with the imputer | `model_trainer/trained_model/model.pkl` |
 
-The fitted imputer is also saved as `final_model/preprocessor.pkl` for later use at prediction time. `Artifacts/` and `final_model/` are gitignored.
+The fitted imputer is also saved as `final_models/preprocessor.pkl` (and the best model as `final_models/model.pkl`) for the API to load. `Artifacts/` and `final_models/` are gitignored.
+
+### Stages in plain words
+
+**1. Data ingestion** ([data_ingestion.py](app/components/data_ingestion.py))
+- Connects to MongoDB (`Surya` / `NetworkData`) and loads every row into a table.
+- Drops the `_id` column and turns the text `na` into a real missing value.
+- Saves a full copy, then splits it 80/20 into `train.csv` and `test.csv`.
+
+**2. Data validation** ([data_validation.py](app/components/data_validation.py))
+- Checks the number of columns against `data_schema/schema.yaml`.
+- Runs an Evidently drift check: has any column's distribution moved between train and test?
+- Good files go to `validated/`, bad ones to `invalid/`; a drift report is saved either way.
+
+**3. Data transformation** ([data_transformation.py](app/components/data_transformation.py))
+- Changes the target from `-1` to `0` (0 = phishing, 1 = legitimate).
+- Fits a KNN imputer on train only, then fills gaps in train and test with it.
+- Saves the arrays as `.npy` and the imputer as `preprocessing.pkl` (copy in `final_models/`).
+
+**4. Model trainer** ([model_trainer.py](app/components/model_trainer.py))
+- Tunes 6 models with random search (5 random settings each, 3-fold cross-validation).
+- Keeps the model with the best test precision and logs it, plus metrics, to MLflow.
+- Saves it with the imputer to `model_trainer/trained_model/model.pkl`; raw model to `final_models/model.pkl`.
+
+**Training pipeline** ([training_pipeline.py](app/pipeline/training_pipeline.py))
+- Runs the four stages in order and hands each stage's output to the next.
+- Wraps any failure in `NetworkSecurityException` with the file and line.
+- When training finishes, uploads `Artifacts/<timestamp>/` and `final_models/` to S3.
+- This is what `POST /train` runs; `main.py` runs the same stages without the S3 upload.
 
 ### Stage diagrams
 
@@ -158,7 +242,7 @@ flowchart TD
     D --> G["Join features and target<br/>into one array per split"]
     F --> G
     G --> H["transformed/train.npy<br/>transformed/test.npy"]
-    E --> I["transformed_object/preprocessing.pkl<br/>final_model/preprocessor.pkl"]
+    E --> I["transformed_object/preprocessing.pkl<br/>final_models/preprocessor.pkl"]
     H --> Z(["DataTransformationArtifact"])
     I --> Z
 ```
@@ -252,6 +336,7 @@ uv run jupyter lab notebooks/
 main.py           runs the full pipeline
 app/api/          FastAPI backend (main, schemas, deps, routes/)
 app/pipeline/     training_pipeline.py, batch_pipeline.py (batch scoring)
+app/cloud/        s3_syncer.py (boto3 upload/download of folders)
 frontend/         Streamlit UI
 push_data.py      loads the CSV into MongoDB
 app/components/   pipeline stages (ingestion, validation, transformation, model trainer)
@@ -277,6 +362,9 @@ docs/             guides
 | `/predict` returns 503 "Model not loaded" | `final_models/` is empty. Run `uv run python main.py` or `POST /train` |
 | Streamlit shows "Cannot reach API" | Start the API first, or set `API_URL` |
 | `/train` fails at import with a DagsHub error | Check `DAGSHUB_REPO_OWNER`/`DAGSHUB_REPO_NAME` in `.env` |
+| `NoCredentialsError: Unable to locate credentials` | Run `aws configure` (or set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) |
+| S3 `AccessDenied` or `403` on upload | Check the IAM policy has `s3:ListBucket` on the bucket and `s3:GetObject`/`s3:PutObject` on `bucket/*`, and the bucket name matches `TRAINING_BUCKET_NAME` |
+| S3 `NoSuchBucket` or `BucketAlreadyExists` | Create the bucket (names are global, pick a unique one) and update `TRAINING_BUCKET_NAME` |
 | `RecursionError` in a config property | A `@property` is reading itself. Build it from `training_pipeline_config.artifact_dir` instead |
 
 ## Docs
