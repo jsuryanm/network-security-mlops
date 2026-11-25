@@ -108,7 +108,9 @@ GitHub needs an AWS identity to push images. We create one **IAM user** and give
         "ecr:InitiateLayerUpload",
         "ecr:UploadLayerPart",
         "ecr:CompleteLayerUpload",
-        "ecr:PutImage"
+        "ecr:PutImage",
+        "ecr:BatchGetImage",
+        "ecr:GetDownloadUrlForLayer"
       ],
       "Resource": [
         "arn:aws:ecr:<REGION>:<ACCOUNT_ID>:repository/network-security-backend",
@@ -118,7 +120,7 @@ GitHub needs an AWS identity to push images. We create one **IAM user** and give
   ]
 }
 ```
-It lets the user log in to ECR and push images to **only the two repositories** you created, and nothing else.
+It lets the user log in to ECR and push images to **only the two repositories** you created, and nothing else. `ecr:BatchGetImage` and `ecr:GetDownloadUrlForLayer` look like "read" permissions, but `docker push` needs them: it asks ECR whether an image or layer already exists before and after uploading. Without them the push ends with `unexpected status from HEAD request ... 403 Forbidden`.
 
 **2b. Create the user**
 - [ ] IAM, **Users**, **Create user**. User name: `github-actions-ecr-push`.
@@ -390,6 +392,7 @@ export ECR_FRONTEND_REPOSITORY=network-security-frontend
 
 | Problem | Likely cause and fix |
 |---|---|
+| Build job, at the end of `docker push`: `unexpected status from HEAD request to .../manifests/sha256:... 403 Forbidden` | The `ecr-push-network-security` policy lacks `ecr:BatchGetImage` (and `ecr:GetDownloadUrlForLayer`). Add them (Step 2a), save, and re-run. Also check the repository ARNs in the policy have the right region, account and names |
 | Build job: `The security token included in the request is invalid` / `SignatureDoesNotMatch` / `Credentials could not be loaded` | The two GitHub secrets are wrong, have a stray space or line break, or the key was deactivated or deleted. Create a new key and update both secrets |
 | Build job: `denied: User ... is not authorized to perform: ecr:...` | The `ecr-push` policy is missing, or its repository ARNs have the wrong region or account |
 | Build job: `name unknown: repository ... does not exist` | The repository name differs from the secret. Names are case-sensitive |
