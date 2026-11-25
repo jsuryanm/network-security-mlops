@@ -15,7 +15,7 @@ class TrainingPipelineConfig(BaseModel):
     timestamp: str = Field(datetime.now().strftime("%m_%d_%Y_%H_%M_%S"))
     pipeline_name: str = training_pipeline.PIPELINE_NAME
     artifact_name: str = training_pipeline.ARTIFACT_DIR
-    model_dir: Path = Path("final_model")
+    model_dir: Path = Path("final_models")
 
     @property
     def artifact_dir(self) -> Path:

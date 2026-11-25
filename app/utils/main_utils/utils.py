@@ -103,7 +103,7 @@ def evaluate_models(
             rnd_search = RandomizedSearchCV(
                 model,
                 param_distributions=param,
-                n_iter=10,          # random combos sampled per model
+                n_iter=5,           # random combos sampled per model
                 cv=3,
                 scoring="precision",
                 n_jobs=-1,

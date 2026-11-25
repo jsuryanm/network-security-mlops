@@ -66,23 +66,34 @@ class ModelTrainer:
 
     def track_mlflow(
         self,
-        best_model: XGBClassifier,
+        best_model,
+        best_model_name: str,
         clf_metric: ClassificationMetricArtifact
     ):
+        """Log metrics and ONLY the winning model, using the MLflow flavor
+        that matches its type (xgboost vs scikit-learn)."""
         with mlflow.start_run():
-            f1_score = clf_metric.f1_score
-            precision_score = clf_metric.precision_score
-            recall_score = clf_metric.recall_score
+            mlflow.log_param("best_model", best_model_name)
+            mlflow.log_metric("f1_score", clf_metric.f1_score)
+            mlflow.log_metric("precision_score", clf_metric.precision_score)
+            mlflow.log_metric("recall_score", clf_metric.recall_score)
 
-            mlflow.log_metric("f1_score",f1_score)
-            mlflow.log_metric("precision_score",precision_score)
-            mlflow.log_metric("recall_score",recall_score)
-            mlflow.xgboost.log_model(
-                xgb_model=best_model,
-                name="model",
-                model_format='json',
-                registered_model_name="production_model"
-            )
+            if isinstance(best_model, XGBClassifier):
+                mlflow.xgboost.log_model(
+                    xgb_model=best_model,
+                    name="model",
+                    model_format='json',
+                    registered_model_name="production_model"
+                )
+            else:
+                # skops (MLflow default) rejects tree models; we trained this model
+                # ourselves and already pickle it with joblib, so cloudpickle is fine.
+                mlflow.sklearn.log_model(
+                    sk_model=best_model,
+                    name="model",
+                    serialization_format="cloudpickle",
+                    registered_model_name="production_model"
+                )
 
 
     def train_model(
@@ -102,50 +113,51 @@ class ModelTrainer:
             "Gradient Boosting": GradientBoostingClassifier(random_state=42),
             "Logistic Regression": LogisticRegression(
                 random_state=42,
-                max_iter=1000
             ),
             "Adaboost": AdaBoostClassifier(random_state=42)
         }
 
+        # Search space trimmed for speed: smaller n_estimators ranges, fewer
+        # tuned params (commented-out ones keep their sklearn/xgboost defaults).
         param_distribs = {
             "Decision Tree": {
-                "criterion": ["gini", "entropy", "log_loss"],
-                "splitter": ["best", "random"],
-                "max_depth": randint(3, 30),
+                "criterion": ["gini", "entropy"],  # "log_loss" duplicates entropy
+                # "splitter": ["best", "random"],
+                "max_depth": randint(3, 20),
                 "min_samples_split": randint(2, 20),
-                "min_samples_leaf": randint(1, 10),
-                "max_features": ["sqrt", "log2", None],
+                # "min_samples_leaf": randint(1, 10),
+                # "max_features": ["sqrt", "log2", None],
             },
             "Random Forest": {
-                "n_estimators": randint(50, 500),
-                "max_depth": [None] + list(range(5, 31, 5)),
-                "min_samples_split": randint(2, 20),
-                "min_samples_leaf": randint(1, 10),
-                "max_features": ["sqrt", "log2", None],
+                "n_estimators": randint(50, 200),
+                "max_depth": [None, 10, 20],
+                "min_samples_split": randint(2, 10),
+                # "min_samples_leaf": randint(1, 10),
+                # "max_features": ["sqrt", "log2", None],
             },
             "Gradient Boosting": {
-                "n_estimators": randint(50, 500),
-                "learning_rate": loguniform(1e-3, 3e-1),
-                "subsample": uniform(0.6, 0.4),  # U[0.6, 1.0]
-                "max_depth": randint(2, 8),
-                "min_samples_leaf": randint(1, 10),
-                "max_features": ["sqrt", "log2", None],
+                "n_estimators": randint(50, 200),
+                "learning_rate": loguniform(1e-2, 3e-1),
+                "max_depth": randint(2, 6),
+                # "subsample": uniform(0.6, 0.4),  # U[0.6, 1.0]
+                # "min_samples_leaf": randint(1, 10),
+                # "max_features": ["sqrt", "log2", None],
             },
             "Logistic Regression": {
                 "C": loguniform(1e-3, 1e2),
             },
             "Adaboost": {
-                "n_estimators": randint(50, 500),
-                "learning_rate": loguniform(1e-3, 1),
+                "n_estimators": randint(50, 150),
+                "learning_rate": loguniform(1e-2, 1),
             },
             "XGBoost Classifier": {
-                "n_estimators": randint(100, 600),
+                "n_estimators": randint(100, 300),
                 "learning_rate": loguniform(1e-2, 3e-1),
-                "max_depth": randint(3, 10),
-                "min_child_weight": randint(1, 10),
-                "subsample": uniform(0.6, 0.4),         # U[0.6, 1.0]
-                "colsample_bytree": uniform(0.6, 0.4),  # U[0.6, 1.0]
-                "gamma": uniform(0, 0.5),
+                "max_depth": randint(3, 8),
+                # "min_child_weight": randint(1, 10),
+                # "subsample": uniform(0.6, 0.4),         # U[0.6, 1.0]
+                # "colsample_bytree": uniform(0.6, 0.4),  # U[0.6, 1.0]
+                # "gamma": uniform(0, 0.5),
             },
         }
 
@@ -178,7 +190,7 @@ class ModelTrainer:
         )
 
         # track the experiments with mlflow
-        self.track_mlflow(best_model, classification_train_metric)
+        self.track_mlflow(best_model, best_model_name, classification_train_metric)
         
 
         preprocessor = load_object(file_path=self.data_transformation_artifact.transformed_object_file_path)

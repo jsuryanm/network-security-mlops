@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # dagshub
     dagshub_repo_owner: str = Field(default=str)
     dagshub_repo_name: str = Field(default=str)
+
+    # aws s3 bucket name
+    training_bucket_name: str = Field(default=str)
     
     model_config = SettingsConfigDict(
         env_file='.env',

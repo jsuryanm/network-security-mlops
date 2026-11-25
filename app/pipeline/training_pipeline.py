@@ -3,6 +3,7 @@ import sys
 
 from pathlib import Path 
 
+from app.core.config import get_settings
 from app.exception.exceptions import NetworkSecurityException
 from app.logging.logger import logger
 
@@ -26,9 +27,14 @@ from app.entity.artifact_entity import (
     ModelTrainerArtifact
 )
 
+from app.cloud.s3_syncer import S3Sync
+
+settings = get_settings()
+
 class TrainingPipeline:
     def __init__(self):
         self.training_pipeline_config = TrainingPipelineConfig()
+        self.s3_sync = S3Sync()
 
     def start_data_ingestion(self) -> DataIngestionArtifact:
         """Initiate the data ingestion component"""
@@ -99,6 +105,29 @@ class TrainingPipeline:
         except Exception as e:
             raise NetworkSecurityException(e, sys)
 
+    def sync_artifact_dir_to_s3(self):
+        """Push artifacts folder to the aws s3 bucket"""
+        try:
+            self.s3_sync.sync_folder_to_s3(
+                folder=self.training_pipeline_config.artifact_dir,
+                bucket=settings.training_bucket_name,
+                prefix=f"artifact/{self.training_pipeline_config.timestamp}"
+            )
+
+        except Exception as e:
+            raise NetworkSecurityException(e, sys)
+
+    def sync_saved_model_dir_to_s3(self):
+        """Push trained model to aws s3 bucket"""
+        try:
+            self.s3_sync.sync_folder_to_s3(
+                folder=self.training_pipeline_config.model_dir,
+                bucket=settings.training_bucket_name,
+                prefix=f"final_model/{self.training_pipeline_config.timestamp}"
+            )
+        except Exception as e:
+            raise NetworkSecurityException(e,sys)
+
     def run_pipeline(self):
         """Run all the pipeline stages"""
         try:
@@ -115,6 +144,9 @@ class TrainingPipeline:
             model_trainer_artifact = self.start_model_trainer(
                 data_transformation_artifact=data_transformation_artifact
             )
+
+            self.sync_artifact_dir_to_s3()
+            self.sync_saved_model_dir_to_s3()
 
             return model_trainer_artifact
         except Exception as e:
