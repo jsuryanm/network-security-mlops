@@ -389,6 +389,7 @@ docs/             guides
 - [FastAPI backend explained](docs/fastapi_backend.md)
 - [Testing guide: unit, integration, lint](docs/testing.md)
 - [AWS deployment (ECR, EC2, GitHub Actions)](docs/aws_deployment.md)
+- [The CI/CD workflow explained](docs/cicd_explained.md)
 - [Docker images explained](docs/docker_images.md)
 - [docker-compose explained](docs/docker_compose.md)
 - [Agentic AI roadmap](docs/agentic_ai_roadmap.md)

@@ -36,6 +36,8 @@ flowchart LR
 
 ### What the workflow does ([cicd.yaml](../.github/workflows/cicd.yaml))
 
+A line-by-line explanation is in [cicd_explained.md](cicd_explained.md).
+
 | Job | When | Does |
 |---|---|---|
 | `integration` | every push and pull request | `uv sync`, `ruff`, `pytest` |
