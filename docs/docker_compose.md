@@ -1,10 +1,14 @@
 # docker-compose explained (local development)
 
-[docker-compose.yml](../docker-compose.yml) starts the whole app with one command instead of typing `docker build` and `docker run` for each piece.
+[docker-compose.local.yml](../docker-compose.local.yml) starts the whole app on your computer with one command instead of typing `docker build` and `docker run` for each piece.
+
+> The plain `docker-compose.yml` is the **AWS** stack (it pulls images from ECR). See [aws_deployment.md](aws_deployment.md). Everything below is about the local file.
 
 ```bash
-docker compose up --build
+docker compose -f docker-compose.local.yml up --build
 ```
+
+**Shortcut:** add the line `COMPOSE_FILE=docker-compose.local.yml` to your local `.env`. Then plain `docker compose up --build`, `docker compose logs -f` and the other commands in this guide use the local file automatically.
 
 | Open | What you get |
 |---|---|

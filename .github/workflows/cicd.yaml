@@ -1,0 +1,145 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Third-party actions are pinned to full commit SHAs (version in the comment).
+# Dependabot can bump them: add a .github/dependabot.yml with the github-actions ecosystem.
+
+jobs:
+  # ---------- 1. lint + tests (runs on pull requests and on main) ----------
+  integration:
+    name: Continuous Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint code
+        run: uv run ruff check app/api app/cloud app/pipeline/batch_pipeline.py frontend tests
+
+      - name: Run unit and integration tests
+        run: uv run pytest -q
+
+  # ---------- 2. build both images and push them to ECR (main only) ----------
+  build-and-push-ecr-image:
+    name: Continuous Delivery
+    needs: integration
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # lets the job ask GitHub for an OIDC token
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC, no stored keys)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@7290e214a610b32bc0eef81748948b6d466a8783 # v2.2.0
+
+      - name: Build and push backend and frontend images
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          BACKEND_REPO: ${{ secrets.ECR_REPOSITORY_NAME }}
+          FRONTEND_REPO: ${{ secrets.ECR_FRONTEND_REPOSITORY_NAME }}
+          IMAGE_SHA: ${{ github.sha }}
+        run: |
+          docker build -t "$ECR_REGISTRY/$BACKEND_REPO:$IMAGE_SHA" -t "$ECR_REGISTRY/$BACKEND_REPO:latest" .
+          docker build -f frontend/Dockerfile -t "$ECR_REGISTRY/$FRONTEND_REPO:$IMAGE_SHA" -t "$ECR_REGISTRY/$FRONTEND_REPO:latest" .
+          docker push --all-tags "$ECR_REGISTRY/$BACKEND_REPO"
+          docker push --all-tags "$ECR_REGISTRY/$FRONTEND_REPO"
+
+  # ---------- 3. deploy on the EC2 self-hosted runner (main only) ----------
+  Continuous-Deployment:
+    needs: build-and-push-ecr-image
+    if: github.event_name == 'push'
+    runs-on: self-hosted
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false   # never cut a deploy in half
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The runner is an EC2 instance. Its IAM instance role is allowed to pull from ECR,
+      # so no AWS keys are needed here.
+      - name: Login to Amazon ECR
+        env:
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
+          REGISTRY="$ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+          aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$REGISTRY"
+          echo "ECR_REGISTRY=$REGISTRY" >> "$GITHUB_ENV"
+
+      # Free-tier server: no training here. If it has no model yet, download the newest one
+      # that a local training run uploaded to S3 (uses the instance role, no keys).
+      - name: Get the model from S3 if the server has none
+        env:
+          AWS_DEFAULT_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          test -f /opt/netsec/.env || { echo "Missing /opt/netsec/.env"; exit 1; }
+          BUCKET="$(grep -E '^TRAINING_BUCKET_NAME[[:space:]]*=' /opt/netsec/.env | head -1 | cut -d= -f2- | tr -d "\"' ")"
+          test -n "$BUCKET" || { echo "TRAINING_BUCKET_NAME is missing in /opt/netsec/.env"; exit 1; }
+          bash scripts/fetch_latest_model.sh "$BUCKET" /opt/netsec/final_models
+
+      - name: Pull and start the new version
+        env:
+          ECR_BACKEND_REPOSITORY: ${{ secrets.ECR_REPOSITORY_NAME }}
+          ECR_FRONTEND_REPOSITORY: ${{ secrets.ECR_FRONTEND_REPOSITORY_NAME }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          # /opt/netsec holds the server-only .env and the data folders (see docs/aws_deployment.md).
+          # It sits outside the runner workspace so checkout never deletes it.
+          cp docker-compose.yml /opt/netsec/docker-compose.yml
+          cd /opt/netsec
+          test -f .env || { echo "Missing /opt/netsec/.env"; exit 1; }
+          docker compose pull
+          docker compose up -d --remove-orphans
+
+      - name: Wait for the API to be healthy
+        run: curl -fsS --retry 30 --retry-delay 5 --retry-connrefused http://127.0.0.1:8000/health
+
+      - name: Show logs if the deploy failed
+        if: failure()
+        run: cd /opt/netsec && docker compose ps && docker compose logs --tail=100
+
+      # Old images from earlier deploys are tagged (not "dangling"), so -a is needed or the
+      # small disk fills up. Rolling back just pulls the old tag from ECR again.
+      - name: Remove old unused images
+        run: docker image prune -af

@@ -296,10 +296,10 @@ Thresholds live in [app/constants/training_pipeline/__init__.py](app/constants/t
 
 ```bash
 cp .env.example .env            # then fill in your values (KEY=value, no spaces around =)
-docker compose up --build       # UI http://localhost:8501, API http://localhost:8000/docs
+docker compose -f docker-compose.local.yml up --build   # UI http://localhost:8501, API http://localhost:8000/docs
 ```
 
-Two small images (backend, frontend) and a compose file for local development. MongoDB stays on Atlas (cloud URI from `.env`). Explained step by step in [docs/docker_images.md](docs/docker_images.md) and [docs/docker_compose.md](docs/docker_compose.md). A plain `uv sync` still installs everything for local work. Docker installs only what each image needs.
+Two small images (backend, frontend) and a compose file for local development. MongoDB stays on Atlas (cloud URI from `.env`). Explained step by step in [docs/docker_images.md](docs/docker_images.md) and [docs/docker_compose.md](docs/docker_compose.md). The plain `docker-compose.yml` is the AWS stack: see [docs/aws_deployment.md](docs/aws_deployment.md). A plain `uv sync` still installs everything for local work. Docker installs only what each image needs.
 
 ## API and UI
 
@@ -388,6 +388,7 @@ docs/             guides
 ## Docs
 - [FastAPI backend explained](docs/fastapi_backend.md)
 - [Testing guide: unit, integration, lint](docs/testing.md)
+- [AWS deployment (ECR, EC2, GitHub Actions)](docs/aws_deployment.md)
 - [Docker images explained](docs/docker_images.md)
 - [docker-compose explained](docs/docker_compose.md)
 - [Agentic AI roadmap](docs/agentic_ai_roadmap.md)

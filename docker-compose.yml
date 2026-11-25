@@ -1,36 +1,41 @@
-# Local development stack.
-#   docker compose up --build     backend + frontend (MongoDB is the cloud URI in .env)
+# AWS stack: runs on the EC2 host, pulls prebuilt images from ECR.
+# For local development use docker-compose.local.yml instead.
+#
+# The deploy workflow sets these variables (see .github/workflows/cicd.yaml):
+#   ECR_REGISTRY             <account-id>.dkr.ecr.<region>.amazonaws.com
+#   ECR_BACKEND_REPOSITORY   name of the backend ECR repository
+#   ECR_FRONTEND_REPOSITORY  name of the frontend ECR repository
+#   IMAGE_TAG                git commit SHA to run (default: latest)
+# Run by hand on the server:  IMAGE_TAG=<sha> docker compose up -d
+#
+# Sized for a small free-tier server (2 GB RAM + 2 GB swap): the API uses ~280 MB, the UI ~70 MB idle.
+# Do not train on the server; train locally and let the deploy pull the model from S3.
 services:
   backend:
-    build: .
+    image: ${ECR_REGISTRY:?set by the deploy workflow}/${ECR_BACKEND_REPOSITORY:?set by the deploy workflow}:${IMAGE_TAG:-latest}
+    env_file: .env                        # lives on the server only, never in git
     ports:
-      - "127.0.0.1:8000:8000"   # loopback only: not reachable from other machines
-    env_file: .env                      # MONGODB_URI, DAGSHUB_*, MLFLOW_URI, TRAINING_BUCKET_NAME ...
-    environment:
-      AWS_SHARED_CREDENTIALS_FILE: /home/app/.aws/credentials   # for the S3 upload after /train
-      AWS_CONFIG_FILE: /home/app/.aws/config
-    volumes:
-      - ./app:/app/app                  # live code: edits reload the server
+      - "127.0.0.1:8000:8000"             # not public: only the frontend (and the host) can call it
+    volumes:                              # survive restarts and redeploys
       - ./final_models:/app/final_models
       - ./Artifacts:/app/Artifacts
       - ./logs:/app/logs
-      - ${HOME}/.aws:/home/app/.aws:ro  # your `aws configure` credentials, read-only
-    # --reload restarts on code change. Fine for dev; one worker only.
-    command: ["uvicorn", "app.api.main:app", "--host", "0.0.0.0", "--port", "8000",
-              "--reload", "--reload-dir", "app"]
+    # No AWS keys here: boto3 uses the EC2 instance role for S3.
+    logging: &log_rotation
+      driver: json-file
+      options:
+        max-size: "10m"             # keep logs from filling the small disk
+        max-file: "3"
     restart: unless-stopped
 
   frontend:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
+    image: ${ECR_REGISTRY:?set by the deploy workflow}/${ECR_FRONTEND_REPOSITORY:?set by the deploy workflow}:${IMAGE_TAG:-latest}
     ports:
-      - "127.0.0.1:8501:8501"
+      - "8501:8501"                       # public UI: restrict it with the EC2 security group
     environment:
-      API_URL: http://backend:8000      # service name = hostname on the compose network
-    volumes:
-      - ./frontend:/app/frontend        # Streamlit reloads when you save
+      API_URL: http://backend:8000        # service name = hostname on the compose network
     depends_on:
       backend:
-        condition: service_healthy
+        condition: service_healthy        # image HEALTHCHECK on /health
     restart: unless-stopped
+    logging: *log_rotation

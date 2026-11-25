@@ -145,19 +145,9 @@ Useful fixtures:
 
 ## 8. Running it in CI (GitHub Actions)
 
-Your `.github/workflows/cicd.yaml` currently has placeholder steps that only `echo`. To make them real, replace the two `run:` lines with the steps below (the file was not changed for you):
+`.github/workflows/cicd.yaml` runs the same checks on every push and pull request: `uv sync --frozen`, then `ruff check` on the linted paths, then `pytest -q`. The image build and deploy jobs run only after they pass, and only on pushes to `main`. See [aws_deployment.md](aws_deployment.md).
 
-```yaml
-      - uses: astral-sh/setup-uv@v5
-      - name: Install dependencies
-        run: uv sync --frozen
-      - name: Lint code
-        run: uv run ruff check app/api app/cloud app/pipeline/batch_pipeline.py frontend tests
-      - name: Run unit and integration tests
-        run: uv run pytest -q
-```
-
-The tests need no secrets, because MongoDB, DagsHub and AWS are all faked. That is why they are safe to run on every push.
+The tests need no secrets, because MongoDB, DagsHub and AWS are all faked. That is why they are safe to run on every push and on pull requests.
 
 ## 9. What is NOT tested (so you know the gaps)
 
