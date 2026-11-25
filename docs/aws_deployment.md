@@ -268,17 +268,74 @@ Write each line as `KEY=value` with no spaces around `=`. This file stays on the
 
 The containers run as user ID 1000, the same as the default `ubuntu` user, so they can write to these folders.
 
-**Register the self-hosted runner**
-- [ ] GitHub, your repository, **Settings**, **Actions**, **Runners**, **New self-hosted runner**, **Linux**, **x64**.
-- [ ] Copy the commands GitHub shows into the SSH session (download, `./config.sh --url ... --token ...`). Accept the defaults.
-- [ ] Run it as a service so it survives reboots:
-```bash
-sudo ./svc.sh install && sudo ./svc.sh start
-sudo ./svc.sh status
-```
-The runner shows as **Idle** on GitHub when it is ready.
+### Register the self-hosted runner
 
-> **Security:** a self-hosted runner executes code on your server. The deploy job only runs for pushes to `main`, never for pull requests. If this repository is public, also set GitHub, Settings, Actions, General, "Fork pull request workflows" to **Require approval for all outside collaborators**.
+The runner is a small program on the EC2 server. It keeps an outbound connection to GitHub and waits for jobs. When the deploy job starts, GitHub hands it to this program, which runs the steps on the server. Nothing needs to be opened in the security group for it, because the server calls out to GitHub.
+
+**1. Get a registration token from GitHub** (in the browser)
+- [ ] Repository, **Settings**, **Actions**, **Runners**, **New self-hosted runner**.
+- [ ] Choose **Linux** and **x64** (choose **ARM64** only if you launched a `t4g` instance).
+- [ ] Copy the token from the `./config.sh --url ... --token ...` line. It is valid for about an hour and works once. If it expires, reload the page for a new one.
+
+**2. Install the runner on the server** (SSH in as the normal `ubuntu` user. **Never use `sudo` or root** for `config.sh`: it refuses to run that way)
+
+GitHub shows the exact, current commands on that page, and they change with every runner release, so prefer to copy them from there. At the time of writing they look like this:
+```bash
+mkdir -p ~/actions-runner && cd ~/actions-runner
+
+# download (x64). Check the page for the newest version number
+RUNNER_VERSION=2.338.2
+curl -fsSL -o actions-runner.tar.gz \
+  https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-x64-${RUNNER_VERSION}.tar.gz
+
+# verify the download is not corrupted or tampered with (the hash is listed on the release page)
+echo "baebf204307bac6193480852732f0aba2ae97b6c5597c244f4d5558390147c40  actions-runner.tar.gz" | sha256sum -c -
+
+tar xzf actions-runner.tar.gz
+sudo ./bin/installdependencies.sh      # system libraries the runner needs (once)
+```
+For ARM64 use `actions-runner-linux-arm64-...` and the matching hash from the [release page](https://github.com/actions/runner/releases).
+
+**3. Connect it to your repository**
+```bash
+./config.sh --url https://github.com/jsuryanm/network-security-mlops \
+            --token <REGISTRATION_TOKEN> \
+            --name netsec-ec2 \
+            --unattended
+```
+- `--name` is the label you will see in GitHub. `--unattended` skips the questions and accepts the defaults (default runner group, work folder `_work`).
+- The workflow uses `runs-on: self-hosted`. Every self-hosted runner automatically has the labels `self-hosted`, `Linux` and `X64`, so no extra label is needed.
+
+**4. Run it as a service so it survives reboots**
+```bash
+sudo ./svc.sh install       # creates a systemd service that runs as your current user
+sudo ./svc.sh start
+sudo ./svc.sh status        # should say "active (running)"
+```
+Back on GitHub, **Settings, Actions, Runners** should show `netsec-ec2` as **Idle** with a green dot. That means it is ready for the deploy job.
+
+**5. Make sure the runner can use Docker**
+
+The deploy job runs `docker compose`, so the runner's user must be in the `docker` group (you did this in the Docker install step). If you added it **after** starting the service, restart the service so it picks up the group:
+```bash
+groups                                   # the list must include "docker"
+sudo ./svc.sh stop && sudo ./svc.sh start
+```
+
+**Manage the runner**
+
+| Task | Command (in `~/actions-runner`) |
+|---|---|
+| Is it running? | `sudo ./svc.sh status` |
+| Stop / start / restart | `sudo ./svc.sh stop`, `sudo ./svc.sh start` |
+| Read its logs | `journalctl -u 'actions.runner.*' -n 100 --no-pager` |
+| Watch a job's output on the server | Open the run on GitHub, or `ls ~/actions-runner/_diag` for the runner's own log files |
+| Remove it for good | `sudo ./svc.sh stop && sudo ./svc.sh uninstall`, then `./config.sh remove --token <REMOVAL_TOKEN>` (GitHub, Settings, Actions, Runners, the runner's menu, **Remove**, shows the token) |
+| Update it | Nothing to do: the runner updates itself when GitHub releases a new version |
+
+The runner program is idle most of the time. I did not measure its memory use on a server, so watch `free -h` on the 2 GB instance after the first deploys.
+
+> **Security:** a self-hosted runner executes code on your server, and that server holds your `.env` secrets and the instance role. The deploy job only runs for pushes to `main`, never for pull requests. If this repository is public, also set GitHub, Settings, Actions, General, "Fork pull request workflows" to **Require approval for all outside collaborators**. Never register this runner for other repositories.
 
 ## 4. Add the secrets in GitHub
 
@@ -337,6 +394,10 @@ export ECR_FRONTEND_REPOSITORY=network-security-frontend
 | Build job: `denied: User ... is not authorized to perform: ecr:...` | The `ecr-push` policy is missing, or its repository ARNs have the wrong region or account |
 | Build job: `name unknown: repository ... does not exist` | The repository name differs from the secret. Names are case-sensitive |
 | Deploy job stays "Waiting for a runner" | The runner is offline. On the server: `sudo ./svc.sh status`, then `start` |
+| `config.sh`: `Must not run with sudo` | Run `./config.sh` as the normal user, without `sudo` (only `svc.sh` and `installdependencies.sh` use `sudo`) |
+| `config.sh` fails with `Not Found` or an authorization error | The registration token expired (it lasts about an hour) or the `--url` is wrong. Get a new token from GitHub, Settings, Actions, Runners, **New self-hosted runner** |
+| Runner shows **Offline** after a reboot | The service is not running. `sudo ./svc.sh status`, then `sudo ./svc.sh start`. If it keeps failing, read `journalctl -u 'actions.runner.*' -n 100` |
+| `installdependencies.sh` or the runner complains about missing libraries (for example `libicu`) | Run `sudo ./bin/installdependencies.sh` again from `~/actions-runner` |
 | Deploy job: `Missing /opt/netsec/.env` | Create the file (Section 3) |
 | Deploy: `no basic auth credentials` / `pull access denied` | The instance role has no ECR pull permission, or the instance profile is not attached |
 | Deploy: `permission denied` on the Docker socket | The runner user is not in the `docker` group: `sudo usermod -aG docker $USER`, then restart the runner service |
