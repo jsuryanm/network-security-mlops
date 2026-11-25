@@ -55,5 +55,23 @@ dev = [
     "nbconvert>=7.17.2",
     "nbformat>=5.11.1",
     "pytest>=9.2.0",
+    "ruff>=0.17.6",
     "seaborn>=0.13.2",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: API tests using a tiny real model and a fake MongoDB (no network)"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]  # pycodestyle, pyflakes, whitespace, import order
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/api/schemas.py" = ["E501"]  # long example payload

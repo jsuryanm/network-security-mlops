@@ -15,7 +15,12 @@ API_URL = os.getenv("API_URL", "http://localhost:8000")
 SCHEMA = Path(__file__).resolve().parent.parent / "data_schema" / "schema.yaml"
 
 # Dataset encoding for each feature: -1, 0 or 1 (meaning differs per feature).
-FEATURES = [name for item in yaml.safe_load(SCHEMA.read_text())["columns"] for name in item if name != "Result"]
+FEATURES = [
+    name
+    for item in yaml.safe_load(SCHEMA.read_text())["columns"]
+    for name in item
+    if name != "Result"
+]
 
 st.set_page_config(page_title="Phishing Detector", page_icon="🎣", layout="wide")
 st.title("Phishing Website Detector")
@@ -60,7 +65,9 @@ with single:
             (st.success if p["label"] == "legitimate" else st.error)(f"Result: **{p['label']}**")
 
 with batch:
-    up = st.file_uploader("CSV with the 30 feature columns (a `Result` column is ignored)", type="csv")
+    up = st.file_uploader(
+        "CSV with the 30 feature columns (a `Result` column is ignored)", type="csv"
+    )
     if up and st.button("Run batch prediction"):
         r = call("POST", "/batch/predict", files={"file": (up.name, up.getvalue(), "text/csv")})
         if r:

@@ -41,7 +41,9 @@ class S3Sync:
             with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
                 uploaded = sum(pool.map(upload, files))
 
-            logger.info(f"Synced {folder} to s3://{bucket}/{prefix}: {uploaded}/{len(files)} uploaded")
+            logger.info(
+                f"Synced {folder} to s3://{bucket}/{prefix}: {uploaded}/{len(files)} uploaded"
+            )
             return uploaded
         except Exception as e:
             logger.error(f"Sync to s3 failed: {e}")
@@ -55,7 +57,7 @@ class S3Sync:
             objects = []
             # fetches all files from s3 bucket
             paginator = self.s3.get_paginator("list_objects_v2")
-            
+
             for page in paginator.paginate(Bucket=bucket, Prefix=f"{prefix}/"):
                 objects.extend(o for o in page.get("Contents", []) if not o["Key"].endswith("/"))
 
@@ -72,7 +74,9 @@ class S3Sync:
             with ThreadPoolExecutor(max_workers=MAX_WORKERS) as pool:
                 downloaded = sum(pool.map(download, objects))
 
-            logger.info(f"Synced s3://{bucket}/{prefix} to {folder}: {downloaded}/{len(objects)} downloaded")
+            logger.info(
+                f"Synced s3://{bucket}/{prefix} to {folder}: {downloaded}/{len(objects)} downloaded"
+            )
             return downloaded
         except Exception as e:
             logger.error(f"Sync from s3 failed: {e}")

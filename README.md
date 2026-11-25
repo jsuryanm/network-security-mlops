@@ -324,6 +324,15 @@ Label `1` = legitimate, `0` = phishing. The API is async: blocking sklearn work 
 
 New to FastAPI? Read [docs/fastapi_backend.md](docs/fastapi_backend.md).
 
+## Tests
+
+```bash
+uv run pytest                       # 56 checks, about 2 s, no network or cloud needed
+uv run ruff check app/api tests     # lint
+```
+
+Unit tests, API integration tests (fake MongoDB, tiny real model) and a lint check. Details in [docs/testing.md](docs/testing.md).
+
 ## Notebooks
 Experiments only, no production code. Run them in order. They read and write `Artifacts/notebooks/`.
 
@@ -378,6 +387,7 @@ docs/             guides
 
 ## Docs
 - [FastAPI backend explained](docs/fastapi_backend.md)
+- [Testing guide: unit, integration, lint](docs/testing.md)
 - [Docker images explained](docs/docker_images.md)
 - [docker-compose explained](docs/docker_compose.md)
 - [Agentic AI roadmap](docs/agentic_ai_roadmap.md)

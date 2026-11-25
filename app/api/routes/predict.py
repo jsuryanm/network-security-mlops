@@ -4,7 +4,7 @@ import pandas as pd
 from fastapi import APIRouter, BackgroundTasks, FastAPI, HTTPException, Request
 
 from app.api.deps import LABELS, now
-from app.api.schemas import PredictRequest, PredictResponse, Prediction
+from app.api.schemas import Prediction, PredictRequest, PredictResponse
 from app.logging.logger import logger
 from app.utils.ml_utils.estimator import NetworkModel
 
@@ -13,7 +13,10 @@ router = APIRouter(tags=["predict"])
 
 async def _log_predictions(app: FastAPI, records: list[dict], preds: list[int]) -> None:
     created_at = now()
-    docs = [{"features": r, "prediction": p, "created_at": created_at} for r, p in zip(records, preds)]
+    docs = [
+        {"features": r, "prediction": p, "created_at": created_at}
+        for r, p in zip(records, preds)
+    ]
     try:
         await app.state.predictions.insert_many(docs)
     except Exception:
