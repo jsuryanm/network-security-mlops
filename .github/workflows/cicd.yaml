@@ -51,19 +51,18 @@ jobs:
     needs: integration
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write   # lets the job ask GitHub for an OIDC token
-      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Configure AWS credentials (OIDC, no stored keys)
+      # Access key of the IAM user "github-actions-ecr-push" (only allowed to push to the two ECR repos).
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Login to Amazon ECR

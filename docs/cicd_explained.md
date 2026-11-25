@@ -78,7 +78,7 @@ on:
 permissions:
   contents: read
 ```
-Every job gets a temporary GitHub token. This line limits it to **read-only** access to the repository. A job that needs more (the build job needs `id-token: write`, see 6.2) asks for it itself.
+Every job gets a temporary GitHub token. This line limits it to **read-only** access to the repository. A job that needs more can ask for it itself.
 
 ### 4.4 `concurrency`: no pile-ups
 ```yaml
@@ -128,39 +128,36 @@ The tests need no secrets: MongoDB, DagsHub and AWS are faked (see [testing.md](
 ```yaml
 needs: integration
 if: github.event_name == 'push'
-permissions:
-  id-token: write
-  contents: read
 ```
 - `needs: integration`: wait for the tests, and skip if they failed.
 - `if: github.event_name == 'push'`: skip on pull requests, so a proposed change never builds images or touches AWS.
-- `id-token: write`: lets this job ask GitHub for a signed identity token. This is the key for the next step.
 
 ### 6.1 Checkout
 Same as before: download the code.
 
-### 6.2 Log in to AWS without a password (OIDC)
+### 6.2 Log in to AWS with the IAM user's key
 ```yaml
 - uses: aws-actions/configure-aws-credentials@... # v6.3.0
   with:
-    role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     aws-region: ${{ secrets.AWS_REGION }}
 ```
-Old way: copy an AWS access key and secret into GitHub and hope nobody steals them. **OIDC way**: no stored keys at all.
+This step puts an **access key** (like a username and password for a robot) into the job's environment, so every later AWS command is done as the IAM user `github-actions-ecr-push`.
 
 ```mermaid
 sequenceDiagram
     participant J as GitHub job
-    participant G as GitHub (token service)
-    participant A as AWS (STS)
-    J->>G: I am repo jsuryanm/network-security-mlops on branch main. Sign that.
-    G-->>J: Signed identity token (short-lived)
-    J->>A: Here is my token. Let me use role github-actions-ecr-push.
-    A->>A: Check signature, repo and branch against the role's trust policy
-    A-->>J: Temporary credentials (expire in about an hour)
+    participant S as GitHub Secrets
+    participant A as AWS
+    J->>S: Give me AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY
+    S-->>J: The two values (hidden in logs)
+    J->>A: Request signed with that key
+    A->>A: Check the key, then the policy attached to the user
+    A-->>J: Allowed only: log in to ECR and push to the two repositories
 ```
 
-AWS only hands over credentials if the token says it came from **your repository and the `main` branch**. The role itself can only push images to the two ECR repositories. Even if someone copied the workflow, it would not work from another repository.
+The safety net is the **policy attached directly to that user**: it only allows pushing images to the two ECR repositories. Even if the key leaked, it could not touch EC2, S3 or anything else. Treat the key like a password: keep it only in GitHub secrets, rotate it about every 90 days, and delete it if you suspect a leak.
 
 ### 6.3 Log in to ECR
 ```yaml
@@ -279,19 +276,20 @@ GitHub, repository, **Settings, Secrets and variables, Actions**:
 
 | Secret | Used by | Meaning |
 |---|---|---|
-| `AWS_ROLE_TO_ASSUME` | build job | ARN of the IAM role GitHub may assume (OIDC) |
+| `AWS_ACCESS_KEY_ID` | build job | Access key ID of the IAM user `github-actions-ecr-push` |
+| `AWS_SECRET_ACCESS_KEY` | build job | The matching secret key |
 | `AWS_REGION` | build and deploy jobs | For example `ap-southeast-1` |
 | `ECR_REPOSITORY_NAME` | build and deploy | Name of the backend ECR repository |
 | `ECR_FRONTEND_REPOSITORY_NAME` | build and deploy | Name of the frontend ECR repository |
 
-There are no AWS access keys anywhere. The build job gets temporary credentials through OIDC, and the deploy job uses the server's own role. The setup is in [aws_deployment.md](aws_deployment.md).
+Only the build job uses an access key. The deploy job runs on your server and uses the server's own IAM role, so no key is stored there. The setup is in [aws_deployment.md](aws_deployment.md).
 
 ## 9. Security choices at a glance
 
 | Choice | Protects against |
 |---|---|
 | Actions pinned to commit SHAs | A tag being moved to malicious code |
-| OIDC instead of stored keys | Stolen long-lived AWS keys |
+| A tiny policy on the IAM user (push to two repos only) | A leaked access key being used for anything else |
 | `permissions: contents: read` by default | A job doing more than it needs |
 | `persist-credentials: false` | The GitHub token lingering on the machine |
 | Values passed through `env:` | Script injection through secrets or other inputs |
@@ -308,8 +306,8 @@ On GitHub: **Actions** tab, click a run, click a job, click a step to see its lo
 |---|---|
 | Lint code | A style problem. Run `uv run ruff check <paths> --fix` locally |
 | Run tests | A test broke. Run `uv run pytest -x -q` locally |
-| Configure AWS credentials | Role ARN wrong, or the role's trust policy does not match the repo and branch |
-| Login to Amazon ECR / push | The `ecr-push` policy is missing, or a repository name differs from the secret |
+| Configure AWS credentials | The two key secrets are wrong or have stray spaces, or the key was deactivated or deleted |
+| Login to Amazon ECR / push | The `ecr-push-network-security` policy is not attached to the user, or a repository name differs from the secret |
 | Job waits forever "Waiting for a runner" | The runner on EC2 is offline: `sudo ./svc.sh status` in the runner folder |
 | Missing `/opt/netsec/.env` | Create it on the server (see [aws_deployment.md](aws_deployment.md)) |
 | Wait for the API to be healthy | The app crashed. Read the logs printed by Step 6 (Mongo access list, bad `.env` values, out of memory) |
@@ -343,6 +341,7 @@ IMAGE_TAG=<an older commit sha> docker compose up -d     # needs the ECR_* varia
 | **Secret** | A hidden value stored in GitHub settings, never shown in logs |
 | **SHA** | The unique ID of one exact commit |
 | **ECR** | AWS's private storage for Docker images |
-| **OIDC** | A way for GitHub to prove its identity to AWS without passwords |
+| **IAM user** | An AWS identity for a person or program. Here: the robot that pushes images |
+| **Access key** | The ID and secret that let a program act as an IAM user |
 | **IAM role** | A set of AWS permissions that something can temporarily take on |
 | **Tag** | A label on a Docker image, such as `latest` or a commit SHA |

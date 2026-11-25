@@ -12,7 +12,7 @@ Every push to `main` is tested, built into two Docker images, stored in AWS, and
 flowchart LR
     DEV[You: git push main] --> GH[GitHub Actions]
     GH -->|1. ruff + pytest| GH
-    GH -->|2. OIDC login, no keys| ECR[(Amazon ECR<br/>backend + frontend images)]
+    GH -->|2. login with IAM user key| ECR[(Amazon ECR<br/>backend + frontend images)]
     GH -->|3. deploy job| RUN[Self-hosted runner<br/>on EC2]
     RUN -->|docker compose pull + up| EC2
     ECR -->|pull images| EC2
@@ -28,7 +28,7 @@ flowchart LR
 | Piece | What it is for |
 |---|---|
 | **ECR** (Elastic Container Registry) | A private storage place for Docker images. One repository per image |
-| **OIDC role** | Lets GitHub log in to AWS **without passwords or access keys** |
+| **IAM user** | The identity GitHub uses to push images to ECR. Its access key is stored in GitHub secrets, and the permissions are attached directly to the user |
 | **EC2** | The server (a rented computer) that runs the containers |
 | **Instance role** | Gives the EC2 server its own permissions (pull from ECR, use S3). No keys on the server |
 | **Self-hosted runner** | A small program on the EC2 that lets GitHub run the deploy step on that server |
@@ -41,7 +41,7 @@ A line-by-line explanation is in [cicd_explained.md](cicd_explained.md).
 | Job | When | Does |
 |---|---|---|
 | `integration` | every push and pull request | `uv sync`, `ruff`, `pytest` |
-| `build-and-push-ecr-image` | push to `main`, after tests pass | OIDC login, builds backend and frontend images, tags each with `latest` and the git commit SHA, pushes to ECR |
+| `build-and-push-ecr-image` | push to `main`, after tests pass | logs in with the IAM user's key, builds backend and frontend images, tags each with `latest` and the git commit SHA, pushes to ECR |
 | `Continuous-Deployment` | push to `main`, after the build | Runs on the EC2 self-hosted runner: logs in to ECR, downloads the newest model from S3 if the server has none ([fetch_latest_model.sh](../scripts/fetch_latest_model.sh)), `docker compose pull`, `docker compose up -d`, waits for `/health`, deletes old images |
 
 The compose file used on the server is [docker-compose.yml](../docker-compose.yml). Local development uses `docker-compose.local.yml`.
@@ -84,35 +84,12 @@ Tick each box as you go.
 - [ ] Repeat with the name `network-security-frontend`.
 - [ ] **Recommended on the Free Plan:** open each repository, **Lifecycle policies**, **Create rule**: rule priority 1, image status **Any**, match criteria **Image count more than** `3`, action **expire**. This keeps ECR storage (and cost) small.
 
-### Step 2. Let GitHub log in to AWS (OIDC)
-**2a. Add GitHub as an identity provider**
-- [ ] Console, **IAM**, **Identity providers**, **Add provider**.
-- [ ] Type **OpenID Connect**. Provider URL: `https://token.actions.githubusercontent.com`. Audience: `sts.amazonaws.com`. Add provider.
+### Step 2. Create an IAM user for GitHub (attach policies directly)
+GitHub needs an AWS identity to push images. We create one **IAM user** and give it permissions by **attaching a policy directly** to it.
 
-**2b. Create the role GitHub will use**
-- [ ] IAM, **Roles**, **Create role**, trusted entity **Web identity**.
-- [ ] Identity provider: `token.actions.githubusercontent.com`. Audience: `sts.amazonaws.com`.
-- [ ] GitHub organization: `jsuryanm`. Repository: `network-security-mlops`. Branch: `main`. Next.
-- [ ] Skip the permissions page for now (Next), name the role `github-actions-ecr-push`, create it.
-
-After creation the trust policy should say that only this repository and branch may assume the role. If you want to check it, it looks like this:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {"Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"},
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": {"token.actions.githubusercontent.com:aud": "sts.amazonaws.com"},
-      "StringLike":   {"token.actions.githubusercontent.com:sub": "repo:jsuryanm/network-security-mlops:ref:refs/heads/main"}
-    }
-  }]
-}
-```
-
-**2c. Allow the role to push images (and nothing else)**
-- [ ] Open the role, **Add permissions**, **Create inline policy**, **JSON**, paste, name it `ecr-push`:
+**2a. Create the policy**
+- [ ] Console, **IAM**, **Policies**, **Create policy**, **JSON** tab, paste the policy below, **Next**.
+- [ ] Name it `ecr-push-network-security`, **Create policy**.
 ```json
 {
   "Version": "2012-10-17",
@@ -141,7 +118,27 @@ After creation the trust policy should say that only this repository and branch 
   ]
 }
 ```
-- [ ] Copy the role's **ARN** (top of the role page, `arn:aws:iam::<ACCOUNT_ID>:role/github-actions-ecr-push`). You need it in Section 4.
+It lets the user log in to ECR and push images to **only the two repositories** you created, and nothing else.
+
+**2b. Create the user**
+- [ ] IAM, **Users**, **Create user**. User name: `github-actions-ecr-push`.
+- [ ] Leave **Provide user access to the AWS Management Console** **unticked** (this user is for GitHub only, it never logs in to the console). **Next**.
+- [ ] Permissions options: choose **Attach policies directly**.
+- [ ] In the list, search for `ecr-push-network-security` and tick it. **Next**, then **Create user**.
+
+*Quicker but broader:* instead of your own policy, tick the AWS-managed policy `AmazonEC2ContainerRegistryPowerUser`. It works, but it covers every ECR repository in the account.
+
+**2c. Create the access key**
+- [ ] Open the user, tab **Security credentials**, **Create access key**.
+- [ ] Use case: **Third-party service** (or **Application running outside AWS**), tick the confirmation box, **Next**, **Create access key**.
+- [ ] **Copy the Access key ID and the Secret access key now.** The secret is shown only once. You paste both into GitHub in Section 4. Do not keep them in any other place, and do not commit them.
+
+**Keep this key safe**
+- It is a long-lived password. Anyone who has it can push images to your two repositories, which is why the policy is so small.
+- GitHub stores secrets encrypted and hides them in logs, but any workflow that someone with write access to the repository adds can use them. Keep repository write access limited.
+- Rotate it about every 90 days (create a new key, update the GitHub secrets, delete the old key). If it ever leaks: IAM, the user, **Security credentials**, **Deactivate**, then **Delete**.
+- The **Last used** column on that page shows when the key was used, which is a quick way to spot a key you forgot about.
+- Later, you can swap to short-lived credentials (OIDC) so no key is stored at all. See the last section.
 
 ### Step 3. Create the EC2 server's own role
 - [ ] IAM, **Roles**, **Create role**, trusted entity **AWS service**, use case **EC2**. Next.
@@ -290,11 +287,12 @@ GitHub, repository, **Settings**, **Secrets and variables**, **Actions**, **New 
 | Secret | Value |
 |---|---|
 | `AWS_REGION` | `<REGION>` |
-| `AWS_ROLE_TO_ASSUME` | the role ARN from Step 2c |
+| `AWS_ACCESS_KEY_ID` | the Access key ID from Step 2c |
+| `AWS_SECRET_ACCESS_KEY` | the Secret access key from Step 2c |
 | `ECR_REPOSITORY_NAME` | `network-security-backend` |
 | `ECR_FRONTEND_REPOSITORY_NAME` | `network-security-frontend` |
 
-Once the first deploy works, **delete** the old secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_ECR_LOGIN_URI`. They are no longer used. Then go to IAM and delete any access keys you created for this project.
+Delete the old secret `AWS_ECR_LOGIN_URI` if it still exists. It is no longer used (the registry address is worked out automatically). Only the **build job** uses the access key. The deploy job runs on the EC2 server and uses the server's own role, so no key is stored there.
 
 ## 5. First deploy
 
@@ -335,7 +333,7 @@ export ECR_FRONTEND_REPOSITORY=network-security-frontend
 
 | Problem | Likely cause and fix |
 |---|---|
-| Build job: `Could not assume role` / `Not authorized to perform sts:AssumeRoleWithWebIdentity` | The role's trust policy repo or branch does not match (`repo:jsuryanm/network-security-mlops:ref:refs/heads/main`), or `AWS_ROLE_TO_ASSUME` is wrong |
+| Build job: `The security token included in the request is invalid` / `SignatureDoesNotMatch` / `Credentials could not be loaded` | The two GitHub secrets are wrong, have a stray space or line break, or the key was deactivated or deleted. Create a new key and update both secrets |
 | Build job: `denied: User ... is not authorized to perform: ecr:...` | The `ecr-push` policy is missing, or its repository ARNs have the wrong region or account |
 | Build job: `name unknown: repository ... does not exist` | The repository name differs from the secret. Names are case-sensitive |
 | Deploy job stays "Waiting for a runner" | The runner is offline. On the server: `sudo ./svc.sh status`, then `start` |
@@ -359,7 +357,7 @@ What costs money (against your credits) while this runs: the EC2 instance, its d
 1. EC2, select the instance, **Instance state**, **Terminate instance** (this also deletes its disk).
 2. EC2, **Elastic IPs**, **Release Elastic IP address**.
 3. ECR, delete both repositories.
-4. IAM, delete the roles `github-actions-ecr-push` and `netsec-ec2-role` and the GitHub identity provider (these are free, but tidy).
+4. IAM, delete the user `github-actions-ecr-push` (delete its access key first), the role `netsec-ec2-role` and the policy `ecr-push-network-security` (these are free, but tidy).
 5. Atlas, remove the EC2's IP from Network Access.
 6. GitHub, repository **Settings, Actions, Runners**, remove the runner.
 
@@ -368,5 +366,6 @@ To only **pause** compute, stop the instance. The disk (and an attached Elastic 
 ## 9. Good next steps
 
 - **HTTPS and a login.** The UI is plain HTTP with no password. Limiting port 8501 to your own IP is a stopgap. For real users, put an Application Load Balancer with an ACM certificate in front, and add authentication.
+- **Short-lived credentials (OIDC).** Today GitHub uses a long-lived access key. GitHub Actions can instead prove its identity to AWS with OIDC and receive temporary credentials, so no key is stored. It needs an IAM identity provider and a role, and one line changed in `cicd.yaml` (`role-to-assume`). Worth doing once the setup works.
 - **Dependabot.** The actions are pinned to commit SHAs. Add `.github/dependabot.yml` with the `github-actions` ecosystem so the pins get update pull requests.
 - **Separate staging.** Deploys currently go straight to the one server.
